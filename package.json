@@ -13,6 +13,7 @@
     "@monaco-editor/react": "^4.7.0",
     "@tauri-apps/api": "^2",
     "@tauri-apps/plugin-dialog": "^2",
+    "@tauri-apps/plugin-sql": "^2",
     "@xterm/addon-fit": "^0.10",
     "@xterm/addon-webgl": "^0.18",
     "@xterm/xterm": "^5",
