@@ -1,4 +1,4 @@
-export type SessionStatus = "starting" | "running" | "stopped" | "errored";
+export type SessionStatus = "starting" | "running" | "stopped" | "errored" | "crashed";
 
 export interface SessionInfo {
   id: string;
@@ -7,7 +7,10 @@ export interface SessionInfo {
   status: SessionStatus;
   error?: string;
   createdAt: number;
+  updatedAt: number;
   unreadCount: number;
+  exitCode?: number;
+  envVars?: Record<string, string>;
 }
 
 export interface FileEntry {
@@ -33,3 +36,11 @@ export type PtyEvent =
   | { event: "output"; data: { data: string } }
   | { event: "exit"; data: { code: number | null } }
   | { event: "error"; data: { message: string } };
+
+export interface OutputChunk {
+  id: number;
+  session_id: string;
+  chunk_data: string;
+  sequence_num: number;
+  created_at: number;
+}
