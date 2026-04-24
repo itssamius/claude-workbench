@@ -24,7 +24,7 @@ export default defineConfig(async () => ({
     },
   },
   build: {
-    target: ["safari13"],
+    target: ["safari15", "chrome105"],
     minify: !process.env.TAURI_ENV_DEBUG ? ("esbuild" as const) : false,
     sourcemap: !!process.env.TAURI_ENV_DEBUG,
   },
