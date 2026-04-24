@@ -25,6 +25,7 @@ struct SessionHandle {
     writer: Box<dyn Write + Send>,
     master: Box<dyn MasterPty + Send>,
     status: SessionStatus,
+    exit_code: Option<u32>,
 }
 
 pub struct PtyState {
@@ -46,6 +47,7 @@ pub async fn spawn_session(
     state: tauri::State<'_, SharedPtyState>,
     session_id: String,
     working_dir: String,
+    env_vars: Option<std::collections::HashMap<String, String>>,
     on_event: Channel<PtyEvent>,
 ) -> Result<(), String> {
     let pty_system = native_pty_system();
@@ -62,6 +64,12 @@ pub async fn spawn_session(
     let mut cmd = CommandBuilder::new("claude");
     cmd.cwd(&working_dir);
     cmd.env("TERM", "xterm-256color");
+
+    if let Some(vars) = env_vars {
+        for (key, value) in vars {
+            cmd.env(key, value);
+        }
+    }
 
     let mut child = pair
         .slave
@@ -90,6 +98,7 @@ pub async fn spawn_session(
                 writer,
                 master: pair.master,
                 status: SessionStatus::Running,
+                exit_code: None,
             },
         );
     }
@@ -127,7 +136,12 @@ pub async fn spawn_session(
 
         if let Ok(mut s) = state_arc.lock() {
             if let Some(handle) = s.sessions.get_mut(&sid_for_exit) {
-                handle.status = SessionStatus::Stopped;
+                handle.exit_code = code;
+                // Non-zero exit code = crash, zero/none = clean exit
+                handle.status = match code {
+                    Some(0) | None => SessionStatus::Stopped,
+                    Some(_) => SessionStatus::Errored,
+                };
             }
         }
     });
@@ -206,4 +220,21 @@ pub fn get_session_status(
 ) -> Result<Option<SessionStatus>, String> {
     let s = state.lock().map_err(|e| e.to_string())?;
     Ok(s.sessions.get(&session_id).map(|h| h.status))
+}
+
+#[tauri::command]
+pub async fn check_claude_version() -> Result<String, String> {
+    let output = tokio::process::Command::new("claude")
+        .arg("--version")
+        .output()
+        .await
+        .map_err(|e| format!("Failed to run claude --version: {}", e))?;
+
+    if !output.status.success() {
+        return Err("claude --version returned non-zero exit code".to_string());
+    }
+
+    String::from_utf8(output.stdout)
+        .map(|s| s.trim().to_string())
+        .map_err(|e| format!("Invalid UTF-8 in version output: {}", e))
 }
