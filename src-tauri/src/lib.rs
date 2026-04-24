@@ -1,3 +1,4 @@
+mod db;
 mod fs;
 mod pty;
 
@@ -5,6 +6,7 @@ mod pty;
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
+        .plugin(db::init_db().build())
         .manage(pty::PtyState::new())
         .manage(fs::FsWatcherState::new())
         .invoke_handler(tauri::generate_handler![
