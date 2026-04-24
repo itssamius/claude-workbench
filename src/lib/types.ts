@@ -7,6 +7,7 @@ export interface SessionInfo {
   status: SessionStatus;
   error?: string;
   createdAt: number;
+  unreadCount: number;
 }
 
 // Matches Rust PtyEvent tagged enum (serde tag = "event", content = "data")

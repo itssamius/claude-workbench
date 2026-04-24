@@ -4,7 +4,7 @@ import { FitAddon } from "@xterm/addon-fit";
 import { WebglAddon } from "@xterm/addon-webgl";
 import "@xterm/xterm/css/xterm.css";
 import { sendInput, resizeSession } from "../lib/tauri";
-import { subscribeToOutput } from "../stores/sessionStore";
+import { subscribeToOutput, getOutputBuffer } from "../stores/sessionStore";
 
 interface TerminalPanelProps {
   sessionId: string;
@@ -12,8 +12,6 @@ interface TerminalPanelProps {
 
 export function TerminalPanel({ sessionId }: TerminalPanelProps) {
   const containerRef = useRef<HTMLDivElement>(null);
-  const termRef = useRef<Terminal | null>(null);
-  const fitAddonRef = useRef<FitAddon | null>(null);
 
   useEffect(() => {
     if (!containerRef.current) return;
@@ -22,6 +20,7 @@ export function TerminalPanel({ sessionId }: TerminalPanelProps) {
       cursorBlink: true,
       fontSize: 13,
       fontFamily: "'Menlo', 'Monaco', 'Cascadia Code', monospace",
+      scrollback: 10000,
       theme: {
         background: "#1e1e2e",
         foreground: "#cdd6f4",
@@ -50,23 +49,26 @@ export function TerminalPanel({ sessionId }: TerminalPanelProps) {
     term.loadAddon(fitAddon);
     term.open(containerRef.current);
 
-    // Try WebGL renderer, fall back to canvas
     try {
       term.loadAddon(new WebglAddon());
     } catch {
-      // Canvas renderer is fine
+      // Canvas fallback
     }
 
     fitAddon.fit();
-    termRef.current = term;
-    fitAddonRef.current = fitAddon;
+
+    // Replay buffered output from previous viewing
+    const buffer = getOutputBuffer(sessionId);
+    for (const chunk of buffer) {
+      term.write(chunk);
+    }
 
     // Forward keystrokes to PTY
     const inputDisposable = term.onData((data) => {
       sendInput(sessionId, data).catch(console.error);
     });
 
-    // Subscribe to PTY output
+    // Subscribe to live PTY output
     const unsubscribe = subscribeToOutput(sessionId, (data) => {
       term.write(data);
     });
@@ -87,8 +89,6 @@ export function TerminalPanel({ sessionId }: TerminalPanelProps) {
       resizeDisposable.dispose();
       unsubscribe();
       term.dispose();
-      termRef.current = null;
-      fitAddonRef.current = null;
     };
   }, [sessionId]);
 
