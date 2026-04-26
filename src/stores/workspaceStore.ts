@@ -14,7 +14,7 @@ interface WorkspaceStore {
 
   loadWorkspaces: () => Promise<void>;
   createWorkspace: (name: string, rootDir: string, color?: string) => Promise<string>;
-  updateWorkspace: (id: string, updates: Partial<Pick<WorkspaceInfo, "name" | "color">>) => void;
+  updateWorkspace: (id: string, updates: Partial<Pick<WorkspaceInfo, "name" | "color" | "notificationsEnabled">>) => void;
   deleteWorkspace: (id: string) => void;
   setActiveWorkspace: (id: string | null) => void;
 }
@@ -38,6 +38,7 @@ export const useWorkspaceStore = create<WorkspaceStore>((set) => ({
       name,
       rootDir,
       color: color ?? "#6366f1",
+      notificationsEnabled: true,
       createdAt: now,
       updatedAt: now,
     };
@@ -61,7 +62,7 @@ export const useWorkspaceStore = create<WorkspaceStore>((set) => ({
     return id;
   },
 
-  updateWorkspace: (id: string, updates: Partial<Pick<WorkspaceInfo, "name" | "color">>) => {
+  updateWorkspace: (id: string, updates: Partial<Pick<WorkspaceInfo, "name" | "color" | "notificationsEnabled">>) => {
     set((s) => {
       const ws = s.workspaces[id];
       if (!ws) return s;
@@ -86,3 +87,9 @@ export const useWorkspaceStore = create<WorkspaceStore>((set) => ({
     set({ activeWorkspaceId: id });
   },
 }));
+
+export function getNotificationsEnabled(workspaceId: string | undefined): boolean {
+  if (!workspaceId) return true;
+  const workspace = useWorkspaceStore.getState().workspaces[workspaceId];
+  return workspace?.notificationsEnabled ?? true;
+}

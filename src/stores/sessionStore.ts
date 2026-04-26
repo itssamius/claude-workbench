@@ -66,7 +66,7 @@ function appendToBuffer(sessionId: string, data: string) {
       rateLimitedSessionIds = new Set([...rateLimitedSessionIds, sessionId]);
       const sessions = useSessionStore.getState().sessions;
       const session = sessions[sessionId];
-      if (session) notifyRateLimit(session.name);
+      if (session) notifyRateLimit(session.name, session.workspaceId);
     }
   }
 }
@@ -200,9 +200,9 @@ function setupChannel(id: string, get: () => SessionStore): Channel<PtyEvent> {
           }));
           dbSaveSession({ ...updated, unreadCount: 0 } as SessionInfo).catch(console.error);
           if (status === "stopped") {
-            notifySessionComplete(session.name);
+            notifySessionComplete(session.name, session.workspaceId);
           } else if (status === "crashed") {
-            notifySessionError(session.name);
+            notifySessionError(session.name, undefined, session.workspaceId);
           }
         }
         break;

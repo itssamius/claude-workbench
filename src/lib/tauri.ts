@@ -132,9 +132,9 @@ export async function dbLoadOutputChunks(
 export async function dbSaveWorkspace(workspace: WorkspaceInfo): Promise<void> {
   const db = await getDb();
   await db.execute(
-    `INSERT OR REPLACE INTO workspaces (id, name, root_dir, color, created_at, updated_at)
-     VALUES ($1, $2, $3, $4, $5, $6)`,
-    [workspace.id, workspace.name, workspace.rootDir, workspace.color, workspace.createdAt, workspace.updatedAt],
+    `INSERT OR REPLACE INTO workspaces (id, name, root_dir, color, notifications_enabled, created_at, updated_at)
+     VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+    [workspace.id, workspace.name, workspace.rootDir, workspace.color, (workspace.notificationsEnabled ?? true) ? 1 : 0, workspace.createdAt, workspace.updatedAt],
   );
 }
 
@@ -145,6 +145,7 @@ export async function dbLoadAllWorkspaces(): Promise<WorkspaceInfo[]> {
     name: string;
     root_dir: string;
     color: string;
+    notifications_enabled: number;
     created_at: number;
     updated_at: number;
   }>>("SELECT * FROM workspaces ORDER BY created_at DESC");
@@ -153,6 +154,7 @@ export async function dbLoadAllWorkspaces(): Promise<WorkspaceInfo[]> {
     name: row.name,
     rootDir: row.root_dir,
     color: row.color,
+    notificationsEnabled: row.notifications_enabled !== 0,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   }));

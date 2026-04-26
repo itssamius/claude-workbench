@@ -54,6 +54,12 @@ ALTER TABLE sessions ADD COLUMN workspace_id TEXT REFERENCES workspaces(id) ON D
 CREATE INDEX IF NOT EXISTS idx_sessions_workspace ON sessions(workspace_id);",
                     kind: MigrationKind::Up,
                 },
+                Migration {
+                    version: 3,
+                    description: "add notifications_enabled to workspaces",
+                    sql: "ALTER TABLE workspaces ADD COLUMN notifications_enabled INTEGER NOT NULL DEFAULT 1;",
+                    kind: MigrationKind::Up,
+                },
             ],
         )
 }
