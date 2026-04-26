@@ -1,8 +1,10 @@
 import { useState, useRef, useEffect } from "react";
 import { useSessionStore } from "../stores/sessionStore";
+import { useWorkspaceStore } from "../stores/workspaceStore";
 import { open } from "@tauri-apps/plugin-dialog";
 import type { SessionStatus } from "../lib/types";
 import { SessionSettingsModal } from "./SessionSettingsModal";
+import { WorkspaceSelector } from "./WorkspaceSelector";
 
 const statusColors: Record<SessionStatus, string> = {
   starting: "bg-yellow-400",
@@ -62,12 +64,15 @@ export function Sidebar() {
   const renameSession = useSessionStore((s) => s.renameSession);
   const removeSession = useSessionStore((s) => s.removeSession);
 
+  const activeWorkspaceId = useWorkspaceStore((s) => s.activeWorkspaceId);
+
   const [filter, setFilter] = useState("");
   const [renamingId, setRenamingId] = useState<string | null>(null);
   const [settingsSessionId, setSettingsSessionId] = useState<string | null>(null);
 
   const sessionList = Object.values(sessions)
     .filter((s) => {
+      if (activeWorkspaceId && s.workspaceId !== activeWorkspaceId) return false;
       if (!filter) return true;
       const q = filter.toLowerCase();
       return (
@@ -86,6 +91,7 @@ export function Sidebar() {
 
   return (
     <aside className="h-full flex flex-col bg-[var(--bg-secondary)] border-r border-[var(--border)]">
+      <WorkspaceSelector />
       {/* Header */}
       <div className="flex items-center justify-between px-3 py-3 border-b border-[var(--border)]">
         <h1 className="text-sm font-semibold text-[var(--text-primary)]">
