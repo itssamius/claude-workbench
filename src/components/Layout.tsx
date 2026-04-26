@@ -7,8 +7,10 @@ import { useSessionStore, getRateLimitedSessionIds, clearRateLimit } from "../st
 import { useShortcuts } from "../hooks/useShortcuts";
 import type { Shortcut } from "../hooks/useShortcuts";
 import { open } from "@tauri-apps/plugin-dialog";
-import { checkClaudeVersion } from "../lib/tauri";
+import { checkClaudeVersion, dbLoadSetting } from "../lib/tauri";
 import { initNotifications } from "../lib/notifications";
+import { OnboardingModal } from "./OnboardingModal";
+import { useWorkspaceStore } from "../stores/workspaceStore";
 
 const resizeHandleClass =
   "w-[3px] bg-[var(--border)] hover:bg-[var(--accent)] transition-colors cursor-col-resize";
@@ -25,11 +27,18 @@ export function Layout() {
   const removeSession = useSessionStore((s) => s.removeSession);
   const loadSessions = useSessionStore((s) => s.loadSessions);
   const loadSessionOutput = useSessionStore((s) => s.loadSessionOutput);
+  const loadWorkspaces = useWorkspaceStore((s) => s.loadWorkspaces);
+
+  const [showOnboarding, setShowOnboarding] = useState(false);
 
   // Load persisted sessions on mount
   useEffect(() => {
     loadSessions();
     initNotifications();
+    loadWorkspaces();
+    dbLoadSetting("onboarding_complete").then((val) => {
+      if (!val) setShowOnboarding(true);
+    });
   }, [loadSessions]);
 
   const [versionWarning, setVersionWarning] = useState<string | null>(null);
@@ -190,6 +199,9 @@ export function Layout() {
           </>
         )}
       </PanelGroup>
+      {showOnboarding && (
+        <OnboardingModal onComplete={() => setShowOnboarding(false)} />
+      )}
     </div>
   );
 }
