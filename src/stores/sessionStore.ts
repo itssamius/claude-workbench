@@ -9,7 +9,9 @@ import {
   dbDeleteSession,
   dbSaveOutputChunk,
   dbLoadOutputChunks,
+  dbAssignSessionWorkspace,
 } from "../lib/tauri";
+import { notifySessionComplete, notifySessionError } from "../lib/notifications";
 
 // Output buffer per session — stores raw terminal data for replay on switch
 const MAX_BUFFER_SIZE = 500_000; // ~500KB per session
@@ -175,6 +177,11 @@ function setupChannel(id: string, get: () => SessionStore): Channel<PtyEvent> {
             sessions: { ...s.sessions, [id]: updated },
           }));
           dbSaveSession({ ...updated, unreadCount: 0 } as SessionInfo).catch(console.error);
+          if (status === "stopped") {
+            notifySessionComplete(session.name);
+          } else if (status === "crashed") {
+            notifySessionError(session.name);
+          }
         }
         break;
       }
@@ -222,6 +229,21 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
     } catch (e) {
       get().setStatus(id, "errored", String(e));
     }
+
+    // Auto-assign to matching workspace
+    try {
+      const { useWorkspaceStore } = await import("./workspaceStore");
+      const workspaces = useWorkspaceStore.getState().workspaces;
+      for (const ws of Object.values(workspaces)) {
+        if (workingDir.startsWith(ws.rootDir)) {
+          await dbAssignSessionWorkspace(id, ws.id);
+          set((s) => ({
+            sessions: { ...s.sessions, [id]: { ...s.sessions[id], workspaceId: ws.id } },
+          }));
+          break;
+        }
+      }
+    } catch {}
 
     return id;
   },

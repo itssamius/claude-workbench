@@ -8,6 +8,7 @@ import { useShortcuts } from "../hooks/useShortcuts";
 import type { Shortcut } from "../hooks/useShortcuts";
 import { open } from "@tauri-apps/plugin-dialog";
 import { checkClaudeVersion } from "../lib/tauri";
+import { initNotifications } from "../lib/notifications";
 
 const resizeHandleClass =
   "w-[3px] bg-[var(--border)] hover:bg-[var(--accent)] transition-colors cursor-col-resize";
@@ -28,6 +29,7 @@ export function Layout() {
   // Load persisted sessions on mount
   useEffect(() => {
     loadSessions();
+    initNotifications();
   }, [loadSessions]);
 
   const [versionWarning, setVersionWarning] = useState<string | null>(null);
