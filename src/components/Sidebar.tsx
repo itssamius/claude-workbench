@@ -1,9 +1,11 @@
 import { useState, useRef, useEffect } from "react";
 import { useSessionStore } from "../stores/sessionStore";
 import { useWorkspaceStore } from "../stores/workspaceStore";
+import { useTemplateStore } from "../stores/templateStore";
 import { open } from "@tauri-apps/plugin-dialog";
-import type { SessionStatus } from "../lib/types";
+import type { SessionStatus, SessionTemplate } from "../lib/types";
 import { SessionSettingsModal } from "./SessionSettingsModal";
+import { TemplateModal } from "./TemplateModal";
 import { WorkspaceSelector } from "./WorkspaceSelector";
 
 const statusColors: Record<SessionStatus, string> = {
@@ -66,9 +68,31 @@ export function Sidebar() {
 
   const activeWorkspaceId = useWorkspaceStore((s) => s.activeWorkspaceId);
 
+  const templates = useTemplateStore((s) => s.templates);
+  const loadTemplates = useTemplateStore((s) => s.loadTemplates);
+
   const [filter, setFilter] = useState("");
   const [renamingId, setRenamingId] = useState<string | null>(null);
   const [settingsSessionId, setSettingsSessionId] = useState<string | null>(null);
+  const [showNewMenu, setShowNewMenu] = useState(false);
+  const [templateModalOpen, setTemplateModalOpen] = useState(false);
+  const [editingTemplate, setEditingTemplate] = useState<SessionTemplate | undefined>(undefined);
+  const newMenuRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    loadTemplates();
+  }, [loadTemplates]);
+
+  useEffect(() => {
+    if (!showNewMenu) return;
+    function handleMouseDown(e: MouseEvent) {
+      if (newMenuRef.current && !newMenuRef.current.contains(e.target as Node)) {
+        setShowNewMenu(false);
+      }
+    }
+    document.addEventListener("mousedown", handleMouseDown);
+    return () => document.removeEventListener("mousedown", handleMouseDown);
+  }, [showNewMenu]);
 
   const sessionList = Object.values(sessions)
     .filter((s) => {
@@ -97,13 +121,70 @@ export function Sidebar() {
         <h1 className="text-sm font-semibold text-[var(--text-primary)]">
           Sessions
         </h1>
-        <button
-          onClick={handleNewSession}
-          title="New session (⌘N)"
-          className="px-2 py-1 text-xs rounded bg-[var(--accent)] text-[var(--bg-primary)] hover:opacity-90 transition-opacity"
-        >
-          + New
-        </button>
+        <div ref={newMenuRef} className="relative">
+          <button
+            onClick={() => setShowNewMenu(!showNewMenu)}
+            title="New session (⌘N)"
+            className="px-2 py-1 text-xs rounded bg-[var(--accent)] text-[var(--bg-primary)] hover:opacity-90 transition-opacity"
+          >
+            + New
+          </button>
+          {showNewMenu && (
+            <div className="absolute right-0 top-full z-50 mt-1 bg-[var(--bg-secondary)] border border-[var(--border)] rounded-lg shadow-xl overflow-hidden min-w-[180px]">
+              <button
+                onClick={() => { setShowNewMenu(false); handleNewSession(); }}
+                className="w-full text-left px-3 py-2 text-sm text-[var(--text-primary)] hover:bg-[var(--bg-surface)] transition-colors"
+              >
+                New Session
+              </button>
+              {Object.values(templates).length > 0 && (
+                <div className="border-t border-[var(--border)]">
+                  <div className="px-3 py-1.5 text-xs font-semibold text-[var(--text-secondary)] uppercase tracking-wider">
+                    From Template
+                  </div>
+                  {Object.values(templates).map((tmpl) => (
+                    <button
+                      key={tmpl.id}
+                      onClick={async () => {
+                        setShowNewMenu(false);
+                        const sessionId = await createSession(tmpl.workingDir);
+                        if (Object.keys(tmpl.envVars).length > 0) {
+                          useSessionStore.getState().setEnvVars(sessionId, tmpl.envVars);
+                        }
+                      }}
+                      className="w-full text-left px-3 py-2 text-sm text-[var(--text-primary)] hover:bg-[var(--bg-surface)] transition-colors flex items-center justify-between"
+                    >
+                      <span className="truncate">{tmpl.name}</span>
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setShowNewMenu(false);
+                          setEditingTemplate(tmpl);
+                          setTemplateModalOpen(true);
+                        }}
+                        className="text-xs text-[var(--text-secondary)] hover:text-[var(--text-primary)] ml-2 flex-shrink-0"
+                      >
+                        ⚙
+                      </button>
+                    </button>
+                  ))}
+                </div>
+              )}
+              <div className="border-t border-[var(--border)]">
+                <button
+                  onClick={() => {
+                    setShowNewMenu(false);
+                    setEditingTemplate(undefined);
+                    setTemplateModalOpen(true);
+                  }}
+                  className="w-full text-left px-3 py-2 text-xs text-[var(--accent)] hover:bg-[var(--bg-surface)] transition-colors"
+                >
+                  + New Template
+                </button>
+              </div>
+            </div>
+          )}
+        </div>
       </div>
 
       {/* Filter */}
@@ -251,6 +332,11 @@ export function Sidebar() {
           onClose={() => setSettingsSessionId(null)}
         />
       )}
+      <TemplateModal
+        isOpen={templateModalOpen}
+        onClose={() => { setTemplateModalOpen(false); setEditingTemplate(undefined); }}
+        template={editingTemplate}
+      />
     </aside>
   );
 }
