@@ -89,9 +89,9 @@ AppHeader
   renders branch + diff stats when gitStatus != null
   renders Commit button when gitStatus.hasChanges === true
   Commit button click → setShowCommit(true) → CommitModal
-CommitModal
+CommitModal (receives workingDir prop from AppHeader)
   text input for commit message
-  on submit → git_commit Tauri command → closes modal
+  on submit → git_commit(workingDir, message) Tauri command → closes modal
 ```
 
 ### Tauri commands (Rust)
@@ -107,6 +107,7 @@ async fn git_status(working_dir: String) -> Result<GitStatus, String>
 #[tauri::command]
 async fn git_commit(working_dir: String, message: String) -> Result<(), String>
 // runs: git add -A && git commit -m "{message}"
+// NOTE: stages ALL modified/untracked files before committing (git add -A)
 ```
 
 ### Graceful degradation
