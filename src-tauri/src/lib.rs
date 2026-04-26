@@ -8,8 +8,14 @@ pub fn run() {
         .plugin(tauri_plugin_dialog::init())
         .plugin(db::init_db().build())
         .plugin(tauri_plugin_notification::init())
+        .plugin(tauri_plugin_process::init())
         .manage(pty::PtyState::new())
         .manage(fs::FsWatcherState::new())
+        .setup(|app| {
+            #[cfg(desktop)]
+            app.handle().plugin(tauri_plugin_updater::Builder::new().build())?;
+            Ok(())
+        })
         .invoke_handler(tauri::generate_handler![
             pty::spawn_session,
             pty::send_input,
