@@ -11,12 +11,17 @@ import {
   dbLoadOutputChunks,
   dbAssignSessionWorkspace,
 } from "../lib/tauri";
-import { notifySessionComplete, notifySessionError } from "../lib/notifications";
+import { notifySessionComplete, notifySessionError, notifyRateLimit } from "../lib/notifications";
 
 // Output buffer per session — stores raw terminal data for replay on switch
 const MAX_BUFFER_SIZE = 500_000; // ~500KB per session
 const outputBuffers = new Map<string, string[]>();
 const outputListeners = new Map<string, (data: string) => void>();
+
+const RATE_LIMIT_PATTERN = /rate.?limit|429|too many requests|waiting for capacity/i;
+const rateLimitTimestamps = new Map<string, number>();
+const chunkBuffers = new Map<string, string>();
+let rateLimitedSessionIds = new Set<string>();
 
 export function subscribeToOutput(
   sessionId: string,
@@ -47,6 +52,23 @@ function appendToBuffer(sessionId: string, data: string) {
     totalSize -= removed.length;
   }
   batchWriter.add(sessionId, data);
+
+  // Rate limit detection
+  let buf2 = chunkBuffers.get(sessionId) ?? "";
+  buf2 += data;
+  if (buf2.length > 500) buf2 = buf2.slice(-500);
+  chunkBuffers.set(sessionId, buf2);
+
+  if (RATE_LIMIT_PATTERN.test(buf2)) {
+    const lastDetected = rateLimitTimestamps.get(sessionId) ?? 0;
+    if (Date.now() - lastDetected > 60_000) {
+      rateLimitTimestamps.set(sessionId, Date.now());
+      rateLimitedSessionIds = new Set([...rateLimitedSessionIds, sessionId]);
+      const sessions = useSessionStore.getState().sessions;
+      const session = sessions[sessionId];
+      if (session) notifyRateLimit(session.name);
+    }
+  }
 }
 
 class BatchWriter {
@@ -392,3 +414,11 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
     }
   },
 }));
+
+export function getRateLimitedSessionIds(): Set<string> {
+  return rateLimitedSessionIds;
+}
+
+export function clearRateLimit(sessionId: string): void {
+  rateLimitedSessionIds = new Set([...rateLimitedSessionIds].filter((id) => id !== sessionId));
+}

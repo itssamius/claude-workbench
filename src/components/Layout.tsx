@@ -3,7 +3,7 @@ import { Panel, PanelGroup, PanelResizeHandle } from "react-resizable-panels";
 import { Sidebar } from "./Sidebar";
 import { TerminalPanel } from "./TerminalPanel";
 import { CodeViewer } from "./CodeViewer";
-import { useSessionStore } from "../stores/sessionStore";
+import { useSessionStore, getRateLimitedSessionIds, clearRateLimit } from "../stores/sessionStore";
 import { useShortcuts } from "../hooks/useShortcuts";
 import type { Shortcut } from "../hooks/useShortcuts";
 import { open } from "@tauri-apps/plugin-dialog";
@@ -33,6 +33,18 @@ export function Layout() {
   }, [loadSessions]);
 
   const [versionWarning, setVersionWarning] = useState<string | null>(null);
+  const [rateLimited, setRateLimited] = useState(false);
+
+  useEffect(() => {
+    const interval = setInterval(() => {
+      if (activeSessionId) {
+        setRateLimited(getRateLimitedSessionIds().has(activeSessionId));
+      } else {
+        setRateLimited(false);
+      }
+    }, 2000);
+    return () => clearInterval(interval);
+  }, [activeSessionId]);
 
   useEffect(() => {
     checkClaudeVersion()
@@ -121,6 +133,17 @@ export function Layout() {
           <span>{versionWarning}</span>
           <button
             onClick={() => setVersionWarning(null)}
+            className="ml-4 hover:opacity-70 font-bold"
+          >
+            ×
+          </button>
+        </div>
+      )}
+      {rateLimited && activeSessionId && (
+        <div className="flex items-center justify-between px-4 py-2 bg-orange-500 text-black text-xs">
+          <span>Rate limit detected — Claude Code is being throttled. Output may be delayed.</span>
+          <button
+            onClick={() => { clearRateLimit(activeSessionId); setRateLimited(false); }}
             className="ml-4 hover:opacity-70 font-bold"
           >
             ×
