@@ -60,6 +60,20 @@ CREATE INDEX IF NOT EXISTS idx_sessions_workspace ON sessions(workspace_id);",
                     sql: "ALTER TABLE workspaces ADD COLUMN notifications_enabled INTEGER NOT NULL DEFAULT 1;",
                     kind: MigrationKind::Up,
                 },
+                Migration {
+                    version: 4,
+                    description: "add session templates table",
+                    sql: "CREATE TABLE IF NOT EXISTS session_templates (
+    id TEXT PRIMARY KEY,
+    name TEXT NOT NULL,
+    working_dir TEXT NOT NULL,
+    flags TEXT NOT NULL DEFAULT '[]',
+    env_vars TEXT NOT NULL DEFAULT '{}',
+    created_at INTEGER NOT NULL,
+    updated_at INTEGER NOT NULL
+);",
+                    kind: MigrationKind::Up,
+                },
             ],
         )
 }

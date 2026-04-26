@@ -61,3 +61,28 @@ export interface UpdateInfo {
   version: string;
   body?: string;
 }
+
+export interface ChangedFile {
+  path: string;
+  sessionId: string;
+}
+
+export interface TokenUsageEntry {
+  sessionFile: string;
+  model: string;
+  inputTokens: number;
+  outputTokens: number;
+  cacheCreationTokens: number;
+  cacheReadTokens: number;
+  totalCost: number;
+}
+
+export interface SessionTemplate {
+  id: string;
+  name: string;
+  workingDir: string;
+  flags: string[];
+  envVars: Record<string, string>;
+  createdAt: number;
+  updatedAt: number;
+}
