@@ -19,6 +19,7 @@ export interface WorkspaceInfo {
   name: string;
   rootDir: string;
   color: string;
+  notificationsEnabled?: boolean;
   createdAt: number;
   updatedAt: number;
 }
@@ -53,4 +54,10 @@ export interface OutputChunk {
   chunk_data: string;
   sequence_num: number;
   created_at: number;
+}
+
+export type UpdateStatus = "idle" | "checking" | "available" | "downloading" | "ready" | "error";
+export interface UpdateInfo {
+  version: string;
+  body?: string;
 }
