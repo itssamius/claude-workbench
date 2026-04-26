@@ -11,6 +11,16 @@ export interface SessionInfo {
   unreadCount: number;
   exitCode?: number;
   envVars?: Record<string, string>;
+  workspaceId?: string;
+}
+
+export interface WorkspaceInfo {
+  id: string;
+  name: string;
+  rootDir: string;
+  color: string;
+  createdAt: number;
+  updatedAt: number;
 }
 
 export interface FileEntry {
