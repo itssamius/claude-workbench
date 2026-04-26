@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { Panel, PanelGroup, PanelResizeHandle } from "react-resizable-panels";
 import { Sidebar } from "./Sidebar";
 import { TerminalPanel } from "./TerminalPanel";
+import { IntegratedTerminal } from "./IntegratedTerminal";
 import { CodeViewer } from "./CodeViewer";
 import { useSessionStore, getRateLimitedSessionIds, clearRateLimit } from "../stores/sessionStore";
 import { useShortcuts } from "../hooks/useShortcuts";
@@ -32,6 +33,7 @@ export function Layout() {
   const loadWorkspaces = useWorkspaceStore((s) => s.loadWorkspaces);
 
   const [showOnboarding, setShowOnboarding] = useState(false);
+  const [tab, setTab] = useState<"claude" | "terminal">("claude");
 
   // Load persisted sessions on mount
   useEffect(() => {
@@ -177,7 +179,29 @@ export function Layout() {
         {/* Conversation Panel */}
         <Panel defaultSize={45} minSize={25}>
           {activeSessionId ? (
-            <TerminalPanel key={activeSessionId} sessionId={activeSessionId} />
+            <div className="h-full flex flex-col">
+              <div className="flex border-b border-[var(--border)]">
+                <button
+                  onClick={() => setTab("claude")}
+                  className={`px-3 py-1.5 text-xs ${tab === "claude" ? "text-[var(--accent)] border-b border-[var(--accent)]" : "text-[var(--text-secondary)]"}`}
+                >
+                  Claude
+                </button>
+                <button
+                  onClick={() => setTab("terminal")}
+                  className={`px-3 py-1.5 text-xs ${tab === "terminal" ? "text-[var(--accent)] border-b border-[var(--accent)]" : "text-[var(--text-secondary)]"}`}
+                >
+                  Terminal
+                </button>
+              </div>
+              <div className="flex-1 min-h-0">
+                {tab === "claude" ? (
+                  <TerminalPanel key={activeSessionId} sessionId={activeSessionId} />
+                ) : (
+                  <IntegratedTerminal key={activeSessionId} sessionId={activeSessionId} workingDir={activeSession?.workingDir ?? ""} />
+                )}
+              </div>
+            </div>
           ) : (
             <div className="h-full flex items-center justify-center">
               <div className="text-center">
