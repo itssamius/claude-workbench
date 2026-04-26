@@ -4,6 +4,7 @@ import { Sidebar } from "./Sidebar";
 import { TerminalPanel } from "./TerminalPanel";
 import { IntegratedTerminal } from "./IntegratedTerminal";
 import { CodeViewer } from "./CodeViewer";
+import { TokenDashboard } from "./TokenDashboard";
 import { useSessionStore, getRateLimitedSessionIds, clearRateLimit } from "../stores/sessionStore";
 import { useShortcuts } from "../hooks/useShortcuts";
 import type { Shortcut } from "../hooks/useShortcuts";
@@ -34,6 +35,7 @@ export function Layout() {
 
   const [showOnboarding, setShowOnboarding] = useState(false);
   const [tab, setTab] = useState<"claude" | "terminal">("claude");
+  const [rightPanel, setRightPanel] = useState<"code" | "usage">("code");
 
   // Load persisted sessions on mount
   useEffect(() => {
@@ -221,11 +223,33 @@ export function Layout() {
           <>
             <PanelResizeHandle className={resizeHandleClass} />
             <Panel defaultSize={40} minSize={20}>
-              <CodeViewer
-                key={activeSessionId!}
-                sessionId={activeSessionId!}
-                workingDir={activeSession.workingDir}
-              />
+              <div className="h-full flex flex-col">
+                <div className="flex border-b border-[var(--border)]">
+                  <button
+                    onClick={() => setRightPanel("code")}
+                    className={`px-3 py-1.5 text-xs ${rightPanel === "code" ? "text-[var(--accent)] border-b border-[var(--accent)]" : "text-[var(--text-secondary)]"}`}
+                  >
+                    Code
+                  </button>
+                  <button
+                    onClick={() => setRightPanel("usage")}
+                    className={`px-3 py-1.5 text-xs ${rightPanel === "usage" ? "text-[var(--accent)] border-b border-[var(--accent)]" : "text-[var(--text-secondary)]"}`}
+                  >
+                    Usage
+                  </button>
+                </div>
+                <div className="flex-1 min-h-0">
+                  {rightPanel === "code" ? (
+                    <CodeViewer
+                      key={activeSessionId!}
+                      sessionId={activeSessionId!}
+                      workingDir={activeSession.workingDir}
+                    />
+                  ) : (
+                    <TokenDashboard workingDir={activeSession.workingDir} />
+                  )}
+                </div>
+              </div>
             </Panel>
           </>
         )}
