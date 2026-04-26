@@ -1,6 +1,7 @@
 mod db;
 mod fs;
 mod pty;
+mod tokens;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
@@ -22,10 +23,19 @@ pub fn run() {
             pty::stop_session,
             pty::resize_session,
             pty::get_session_status,
+            pty::spawn_terminal,
+            pty::send_terminal_input,
+            pty::resize_terminal,
+            pty::close_terminal,
             fs::list_directory,
             fs::read_file,
             fs::watch_directory,
             fs::unwatch_directory,
+            fs::write_file,
+            fs::get_changed_files,
+            fs::get_file_snapshot,
+            fs::remove_changed_file,
+            tokens::parse_session_usage,
             pty::check_claude_version,
         ])
         .run(tauri::generate_context!())
