@@ -1,7 +1,15 @@
 import { create } from "zustand";
 import { Channel } from "@tauri-apps/api/core";
 import type { SessionInfo, SessionStatus, PtyEvent } from "../lib/types";
-import { spawnSession, stopSession as stopPty } from "../lib/tauri";
+import {
+  spawnSession,
+  stopSession as stopPty,
+  dbSaveSession,
+  dbLoadAllSessions,
+  dbDeleteSession,
+  dbSaveOutputChunk,
+  dbLoadOutputChunks,
+} from "../lib/tauri";
 
 // Output buffer per session — stores raw terminal data for replay on switch
 const MAX_BUFFER_SIZE = 500_000; // ~500KB per session
@@ -36,7 +44,67 @@ function appendToBuffer(sessionId: string, data: string) {
     const removed = buf.shift()!;
     totalSize -= removed.length;
   }
+  batchWriter.add(sessionId, data);
 }
+
+class BatchWriter {
+  private pending = new Map<string, { data: string; seqNum: number }[]>();
+  private seqCounters = new Map<string, number>();
+  private timer: ReturnType<typeof setInterval> | null = null;
+  private readonly FLUSH_INTERVAL = 1000;
+  private readonly FLUSH_THRESHOLD = 100;
+
+  start() {
+    if (this.timer) return;
+    this.timer = setInterval(() => this.flush(), this.FLUSH_INTERVAL);
+  }
+
+  stop() {
+    if (this.timer) {
+      clearInterval(this.timer);
+      this.timer = null;
+    }
+    this.flush();
+  }
+
+  add(sessionId: string, data: string) {
+    let queue = this.pending.get(sessionId);
+    if (!queue) {
+      queue = [];
+      this.pending.set(sessionId, queue);
+    }
+    const seqNum = (this.seqCounters.get(sessionId) ?? 0) + 1;
+    this.seqCounters.set(sessionId, seqNum);
+    queue.push({ data, seqNum });
+
+    if (queue.length >= this.FLUSH_THRESHOLD) {
+      this.flushSession(sessionId);
+    }
+  }
+
+  private flush() {
+    for (const sessionId of this.pending.keys()) {
+      this.flushSession(sessionId);
+    }
+  }
+
+  private flushSession(sessionId: string) {
+    const queue = this.pending.get(sessionId);
+    if (!queue || queue.length === 0) return;
+    const toWrite = queue.splice(0);
+    for (const chunk of toWrite) {
+      dbSaveOutputChunk(sessionId, chunk.data, chunk.seqNum).catch(console.error);
+    }
+  }
+
+  removeSession(sessionId: string) {
+    this.pending.delete(sessionId);
+    this.seqCounters.delete(sessionId);
+  }
+}
+
+const batchWriter = new BatchWriter();
+batchWriter.start();
 
 interface SessionStore {
   sessions: Record<string, SessionInfo>;
@@ -50,6 +118,9 @@ interface SessionStore {
   setStatus: (id: string, status: SessionStatus, error?: string) => void;
   renameSession: (id: string, name: string) => void;
   clearUnread: (id: string) => void;
+  loadSessions: () => Promise<void>;
+  setEnvVars: (id: string, vars: Record<string, string>) => void;
+  loadSessionOutput: (id: string) => Promise<void>;
 }
 
 function generateId(): string {
@@ -95,7 +166,16 @@ function setupChannel(id: string, get: () => SessionStore): Channel<PtyEvent> {
         break;
       }
       case "exit": {
-        get().setStatus(id, "stopped");
+        const code = msg.data.code;
+        const status = code !== null && code !== 0 ? "crashed" : "stopped";
+        const session = get().sessions[id];
+        if (session) {
+          const updated = { ...session, status, exitCode: code ?? undefined, updatedAt: Date.now() } as SessionInfo;
+          useSessionStore.setState((s) => ({
+            sessions: { ...s.sessions, [id]: updated },
+          }));
+          dbSaveSession({ ...updated, unreadCount: 0 } as SessionInfo).catch(console.error);
+        }
         break;
       }
       case "error": {
@@ -113,12 +193,14 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
 
   createSession: async (workingDir: string) => {
     const id = generateId();
+    const now = Date.now();
     const session: SessionInfo = {
       id,
       name: dirName(workingDir),
       workingDir,
       status: "starting",
-      createdAt: Date.now(),
+      createdAt: now,
+      updatedAt: now,
       unreadCount: 0,
     };
 
@@ -126,6 +208,8 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
       sessions: { ...state.sessions, [id]: session },
       activeSessionId: id,
     }));
+
+    dbSaveSession(session).catch(console.error);
 
     // Clear any stale buffer
     outputBuffers.set(id, []);
@@ -166,14 +250,14 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
     set((state) => ({
       sessions: {
         ...state.sessions,
-        [id]: { ...state.sessions[id], status: "starting", error: undefined },
+        [id]: { ...state.sessions[id], status: "starting", error: undefined, exitCode: undefined, updatedAt: Date.now() },
       },
     }));
 
     const onEvent = setupChannel(id, get);
 
     try {
-      await spawnSession(id, session.workingDir, onEvent);
+      await spawnSession(id, session.workingDir, onEvent, session.envVars);
       get().setStatus(id, "running");
     } catch (e) {
       get().setStatus(id, "errored", String(e));
@@ -191,6 +275,8 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
     });
     outputListeners.delete(id);
     outputBuffers.delete(id);
+    dbDeleteSession(id).catch(console.error);
+    batchWriter.removeSession(id);
   },
 
   setActiveSession: (id: string) => {
@@ -207,10 +293,12 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
     set((state) => {
       const session = state.sessions[id];
       if (!session) return state;
+      const updated = { ...session, status, error, updatedAt: Date.now() };
+      dbSaveSession(updated).catch(console.error);
       return {
         sessions: {
           ...state.sessions,
-          [id]: { ...session, status, error },
+          [id]: updated,
         },
       };
     });
@@ -220,10 +308,12 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
     set((state) => {
       const session = state.sessions[id];
       if (!session) return state;
+      const updated = { ...session, name, updatedAt: Date.now() };
+      dbSaveSession(updated).catch(console.error);
       return {
         sessions: {
           ...state.sessions,
-          [id]: { ...session, name },
+          [id]: updated,
         },
       };
     });
@@ -240,5 +330,43 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
         },
       };
     });
+  },
+
+  loadSessions: async () => {
+    const sessions = await dbLoadAllSessions();
+    const sessionMap: Record<string, SessionInfo> = {};
+    for (const s of sessions) {
+      // Any session marked "running" or "starting" is stale — app just started
+      if (s.status === "running" || s.status === "starting") {
+        s.status = "crashed";
+        s.error = "Session was running when app closed";
+        s.updatedAt = Date.now();
+        dbSaveSession(s).catch(console.error);
+      }
+      sessionMap[s.id] = s;
+    }
+    set({ sessions: sessionMap });
+  },
+
+  setEnvVars: (id: string, vars: Record<string, string>) => {
+    set((state) => {
+      const session = state.sessions[id];
+      if (!session) return state;
+      const updated = { ...session, envVars: vars, updatedAt: Date.now() };
+      dbSaveSession(updated).catch(console.error);
+      return {
+        sessions: { ...state.sessions, [id]: updated },
+      };
+    });
+  },
+
+  loadSessionOutput: async (id: string) => {
+    const buf = outputBuffers.get(id);
+    if (buf && buf.length > 0) return; // already have in-memory data
+    const chunks = await dbLoadOutputChunks(id, 1000, 0);
+    if (chunks.length > 0) {
+      const buffer = chunks.map((c) => c.chunk_data);
+      outputBuffers.set(id, buffer);
+    }
   },
 }));
