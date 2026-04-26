@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from "react";
 import Editor, { DiffEditor } from "@monaco-editor/react";
 import { listen } from "@tauri-apps/api/event";
 import { FileTree } from "./FileTree";
+import { FileChangesPanel } from "./FileChangesPanel";
 import { readFile, watchDirectory, unwatchDirectory } from "../lib/tauri";
 import type { OpenFile, FileChangeEvent } from "../lib/types";
 
@@ -84,6 +85,37 @@ export function CodeViewer({ sessionId, workingDir }: CodeViewerProps) {
     });
   }, []);
 
+  const handleChangeSelect = useCallback(
+    (path: string, original: string, modified: string) => {
+      const name = path.split("/").pop() || path;
+      const existing = tabs.find((t) => t.path === path);
+      if (existing) {
+        setTabs((prev) =>
+          prev.map((t) =>
+            t.path === path
+              ? { ...t, content: modified, originalContent: original }
+              : t,
+          ),
+        );
+      } else {
+        const newFile: OpenFile = {
+          path,
+          name,
+          content: modified,
+          originalContent: original,
+        };
+        setTabs((prev) => {
+          const next = [...prev, newFile];
+          if (next.length > 10) next.shift();
+          return next;
+        });
+      }
+      setActiveTab(path);
+      setShowDiff(true);
+    },
+    [tabs],
+  );
+
   // Watch directory for file changes
   useEffect(() => {
     watchDirectory(sessionId, workingDir).catch(console.error);
@@ -153,9 +185,15 @@ export function CodeViewer({ sessionId, workingDir }: CodeViewerProps) {
       </div>
 
       <div className="flex-1 flex overflow-hidden">
-        {/* File Tree */}
+        {/* File Tree + Changes */}
         <div className="w-48 flex-shrink-0 border-r border-[var(--border)] overflow-y-auto">
-          <FileTree rootPath={workingDir} onFileSelect={openFile} />
+          <FileChangesPanel
+            sessionId={sessionId}
+            onSelectFile={handleChangeSelect}
+          />
+          <div className="border-t border-[var(--border)]">
+            <FileTree rootPath={workingDir} onFileSelect={openFile} />
+          </div>
         </div>
 
         {/* Editor Area */}
