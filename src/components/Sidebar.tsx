@@ -2,12 +2,14 @@ import { useState, useRef, useEffect } from "react";
 import { useSessionStore } from "../stores/sessionStore";
 import { open } from "@tauri-apps/plugin-dialog";
 import type { SessionStatus } from "../lib/types";
+import { SessionSettingsModal } from "./SessionSettingsModal";
 
 const statusColors: Record<SessionStatus, string> = {
   starting: "bg-yellow-400",
   running: "bg-green-400",
   stopped: "bg-gray-400",
   errored: "bg-red-400",
+  crashed: "bg-orange-400",
 };
 
 const statusLabels: Record<SessionStatus, string> = {
@@ -15,6 +17,7 @@ const statusLabels: Record<SessionStatus, string> = {
   running: "Running",
   stopped: "Stopped",
   errored: "Error",
+  crashed: "Crashed",
 };
 
 function InlineRename({
@@ -89,6 +92,7 @@ export function Sidebar() {
         </h1>
         <button
           onClick={handleNewSession}
+          title="New session (⌘N)"
           className="px-2 py-1 text-xs rounded bg-[var(--accent)] text-[var(--bg-primary)] hover:opacity-90 transition-opacity"
         >
           + New
@@ -168,9 +172,15 @@ export function Sidebar() {
               <span className="text-xs text-[var(--text-secondary)] truncate">
                 {session.workingDir}
               </span>
+              {session.status === "crashed" && session.exitCode !== undefined && (
+                <span className="text-xs text-[var(--error)]">
+                  Exit code: {session.exitCode}
+                </span>
+              )}
               <div className="flex gap-2 ml-2 flex-shrink-0">
                 {(session.status === "stopped" ||
-                  session.status === "errored") && (
+                  session.status === "errored" ||
+                  session.status === "crashed") && (
                   <button
                     onClick={(e) => {
                       e.stopPropagation();
@@ -193,7 +203,8 @@ export function Sidebar() {
                   </button>
                 )}
                 {(session.status === "stopped" ||
-                  session.status === "errored") && (
+                  session.status === "errored" ||
+                  session.status === "crashed") && (
                   <button
                     onClick={(e) => {
                       e.stopPropagation();
