@@ -1,4 +1,4 @@
-import { useEffect, useMemo } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Panel, PanelGroup, PanelResizeHandle } from "react-resizable-panels";
 import { Sidebar } from "./Sidebar";
 import { TerminalPanel } from "./TerminalPanel";
@@ -7,6 +7,7 @@ import { useSessionStore } from "../stores/sessionStore";
 import { useShortcuts } from "../hooks/useShortcuts";
 import type { Shortcut } from "../hooks/useShortcuts";
 import { open } from "@tauri-apps/plugin-dialog";
+import { checkClaudeVersion } from "../lib/tauri";
 
 const resizeHandleClass =
   "w-[3px] bg-[var(--border)] hover:bg-[var(--accent)] transition-colors cursor-col-resize";
@@ -22,11 +23,38 @@ export function Layout() {
   const stopSession = useSessionStore((s) => s.stopSession);
   const removeSession = useSessionStore((s) => s.removeSession);
   const loadSessions = useSessionStore((s) => s.loadSessions);
+  const loadSessionOutput = useSessionStore((s) => s.loadSessionOutput);
 
   // Load persisted sessions on mount
   useEffect(() => {
     loadSessions();
   }, [loadSessions]);
+
+  const [versionWarning, setVersionWarning] = useState<string | null>(null);
+
+  useEffect(() => {
+    checkClaudeVersion()
+      .then((version) => {
+        // Parse version - just show it if we get one
+        // Warn if version seems too old or unexpected
+        const match = version.match(/(\d+)\.(\d+)\.(\d+)/);
+        if (!match) {
+          setVersionWarning(`Unexpected Claude CLI version format: ${version}`);
+        }
+        // Could add minimum version check here in the future
+      })
+      .catch(() => {
+        setVersionWarning(
+          "Claude CLI not found. Install it to use Claude Window.",
+        );
+      });
+  }, []);
+
+  useEffect(() => {
+    if (activeSessionId) {
+      loadSessionOutput(activeSessionId);
+    }
+  }, [activeSessionId, loadSessionOutput]);
 
   // Get sorted session list for Cmd+1-9 switching
   const sortedSessionIds = useMemo(() => {
@@ -85,45 +113,58 @@ export function Layout() {
   useShortcuts(shortcuts);
 
   return (
-    <PanelGroup direction="horizontal" className="h-full">
-      {/* Sidebar */}
-      <Panel defaultSize={15} minSize={12} maxSize={30}>
-        <Sidebar />
-      </Panel>
-
-      <PanelResizeHandle className={resizeHandleClass} />
-
-      {/* Conversation Panel */}
-      <Panel defaultSize={45} minSize={25}>
-        {activeSessionId ? (
-          <TerminalPanel key={activeSessionId} sessionId={activeSessionId} />
-        ) : (
-          <div className="h-full flex items-center justify-center">
-            <div className="text-center">
-              <p className="text-lg text-[var(--text-secondary)]">
-                No active session
-              </p>
-              <p className="text-sm text-[var(--text-secondary)] mt-1">
-                Click "+ New" in the sidebar to start a Claude Code session
-              </p>
-            </div>
-          </div>
-        )}
-      </Panel>
-
-      {/* Code Viewer Panel */}
-      {activeSession && (
-        <>
-          <PanelResizeHandle className={resizeHandleClass} />
-          <Panel defaultSize={40} minSize={20}>
-            <CodeViewer
-              key={activeSessionId!}
-              sessionId={activeSessionId!}
-              workingDir={activeSession.workingDir}
-            />
-          </Panel>
-        </>
+    <div className="h-full flex flex-col">
+      {versionWarning && (
+        <div className="flex items-center justify-between px-4 py-2 bg-[var(--warning,#f59e0b)] text-black text-xs">
+          <span>{versionWarning}</span>
+          <button
+            onClick={() => setVersionWarning(null)}
+            className="ml-4 hover:opacity-70 font-bold"
+          >
+            ×
+          </button>
+        </div>
       )}
-    </PanelGroup>
+      <PanelGroup direction="horizontal" className="flex-1">
+        {/* Sidebar */}
+        <Panel defaultSize={15} minSize={12} maxSize={30}>
+          <Sidebar />
+        </Panel>
+
+        <PanelResizeHandle className={resizeHandleClass} />
+
+        {/* Conversation Panel */}
+        <Panel defaultSize={45} minSize={25}>
+          {activeSessionId ? (
+            <TerminalPanel key={activeSessionId} sessionId={activeSessionId} />
+          ) : (
+            <div className="h-full flex items-center justify-center">
+              <div className="text-center">
+                <p className="text-lg text-[var(--text-secondary)]">
+                  No active session
+                </p>
+                <p className="text-sm text-[var(--text-secondary)] mt-1">
+                  Click "+ New" in the sidebar to start a Claude Code session
+                </p>
+              </div>
+            </div>
+          )}
+        </Panel>
+
+        {/* Code Viewer Panel */}
+        {activeSession && (
+          <>
+            <PanelResizeHandle className={resizeHandleClass} />
+            <Panel defaultSize={40} minSize={20}>
+              <CodeViewer
+                key={activeSessionId!}
+                sessionId={activeSessionId!}
+                workingDir={activeSession.workingDir}
+              />
+            </Panel>
+          </>
+        )}
+      </PanelGroup>
+    </div>
   );
 }
