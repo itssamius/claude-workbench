@@ -4,11 +4,35 @@ export function UpdateBanner() {
   const status = useUpdaterStore((s) => s.status);
   const updateInfo = useUpdaterStore((s) => s.updateInfo);
   const downloadProgress = useUpdaterStore((s) => s.downloadProgress);
+  const error = useUpdaterStore((s) => s.error);
   const downloadAndInstall = useUpdaterStore((s) => s.downloadAndInstall);
+  const checkForUpdate = useUpdaterStore((s) => s.checkForUpdate);
   const dismiss = useUpdaterStore((s) => s.dismiss);
 
-  if (status === "idle" || status === "checking" || status === "error") {
+  if (status === "idle" || status === "checking") {
     return null;
+  }
+
+  if (status === "error") {
+    return (
+      <div className="flex items-center justify-between px-4 py-2 bg-[var(--error)] text-white text-xs">
+        <span>Update failed{error ? `: ${error}` : ""}</span>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={checkForUpdate}
+            className="ml-4 hover:opacity-70 font-bold underline"
+          >
+            Retry
+          </button>
+          <button
+            onClick={dismiss}
+            className="ml-2 hover:opacity-70 font-bold"
+          >
+            ×
+          </button>
+        </div>
+      </div>
+    );
   }
 
   if (status === "ready") {

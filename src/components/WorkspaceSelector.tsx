@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useRef, useEffect } from "react";
 import { useWorkspaceStore } from "../stores/workspaceStore";
 import { useSessionStore } from "../stores/sessionStore";
 import { open } from "@tauri-apps/plugin-dialog";
@@ -17,6 +17,18 @@ export function WorkspaceSelector() {
   const [isOpen, setIsOpen] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editName, setEditName] = useState("");
+  const dropdownRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!isOpen) return;
+    function handleMouseDown(e: MouseEvent) {
+      if (dropdownRef.current && !dropdownRef.current.contains(e.target as Node)) {
+        setIsOpen(false);
+      }
+    }
+    document.addEventListener("mousedown", handleMouseDown);
+    return () => document.removeEventListener("mousedown", handleMouseDown);
+  }, [isOpen]);
 
   const workspaceList = Object.values(workspaces);
 
@@ -87,7 +99,7 @@ export function WorkspaceSelector() {
   }
 
   return (
-    <div className="relative px-3 py-2 border-b border-[var(--border)]">
+    <div ref={dropdownRef} className="relative px-3 py-2 border-b border-[var(--border)]">
       <button
         onClick={() => setIsOpen(!isOpen)}
         className="w-full flex items-center gap-2 text-sm text-[var(--text-primary)] hover:text-[var(--accent)] transition-colors"

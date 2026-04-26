@@ -239,10 +239,10 @@ export function Sidebar() {
       </nav>
 
       {/* Footer — session count */}
-      {Object.keys(sessions).length > 0 && (
+      {sessionList.length > 0 && (
         <div className="px-3 py-2 border-t border-[var(--border)] text-xs text-[var(--text-secondary)]">
-          {Object.values(sessions).filter((s) => s.status === "running").length}{" "}
-          running / {Object.keys(sessions).length} total
+          {sessionList.filter((s) => s.status === "running").length}{" "}
+          running / {sessionList.length} total
         </div>
       )}
       {settingsSessionId && (
