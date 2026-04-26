@@ -1,6 +1,6 @@
 import { invoke, Channel } from "@tauri-apps/api/core";
 import Database from "@tauri-apps/plugin-sql";
-import type { PtyEvent, FileEntry, SessionInfo, OutputChunk, WorkspaceInfo } from "./types";
+import type { PtyEvent, FileEntry, SessionInfo, OutputChunk, WorkspaceInfo, TokenUsageEntry, SessionTemplate } from "./types";
 
 export function spawnSession(
   sessionId: string,
@@ -189,6 +189,90 @@ export async function dbSaveSetting(key: string, value: string): Promise<void> {
 
 export function checkClaudeVersion(): Promise<string> {
   return invoke("check_claude_version");
+}
+
+// --- Terminal commands ---
+
+export function spawnTerminal(
+  terminalId: string,
+  workingDir: string,
+  onEvent: Channel<PtyEvent>,
+) {
+  return invoke("spawn_terminal", { terminalId, workingDir, onEvent });
+}
+
+export function sendTerminalInput(terminalId: string, data: string) {
+  return invoke("send_terminal_input", { terminalId, data });
+}
+
+export function resizeTerminal(terminalId: string, rows: number, cols: number) {
+  return invoke("resize_terminal", { terminalId, rows, cols });
+}
+
+export function closeTerminal(terminalId: string) {
+  return invoke("close_terminal", { terminalId });
+}
+
+// --- File snapshot commands ---
+
+export function writeFile(path: string, content: string) {
+  return invoke("write_file", { path, content });
+}
+
+export function getChangedFiles(sessionId: string): Promise<string[]> {
+  return invoke("get_changed_files", { sessionId });
+}
+
+export function getFileSnapshot(sessionId: string, path: string): Promise<string | null> {
+  return invoke("get_file_snapshot", { sessionId, path });
+}
+
+export function removeChangedFile(sessionId: string, path: string) {
+  return invoke("remove_changed_file", { sessionId, path });
+}
+
+// --- Token usage ---
+
+export function parseSessionUsage(workingDir: string): Promise<TokenUsageEntry[]> {
+  return invoke("parse_session_usage", { workingDir });
+}
+
+// --- Template CRUD ---
+
+export async function dbSaveTemplate(template: SessionTemplate): Promise<void> {
+  const db = await getDb();
+  await db.execute(
+    `INSERT OR REPLACE INTO session_templates (id, name, working_dir, flags, env_vars, created_at, updated_at)
+     VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+    [template.id, template.name, template.workingDir, JSON.stringify(template.flags), JSON.stringify(template.envVars), template.createdAt, template.updatedAt],
+  );
+}
+
+export async function dbLoadAllTemplates(): Promise<SessionTemplate[]> {
+  const db = await getDb();
+  const rows = await db.select<Array<{
+    id: string;
+    name: string;
+    working_dir: string;
+    flags: string;
+    env_vars: string;
+    created_at: number;
+    updated_at: number;
+  }>>("SELECT * FROM session_templates ORDER BY created_at DESC");
+  return rows.map((row) => ({
+    id: row.id,
+    name: row.name,
+    workingDir: row.working_dir,
+    flags: JSON.parse(row.flags || "[]"),
+    envVars: JSON.parse(row.env_vars || "{}"),
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+  }));
+}
+
+export async function dbDeleteTemplate(id: string): Promise<void> {
+  const db = await getDb();
+  await db.execute("DELETE FROM session_templates WHERE id = $1", [id]);
 }
 
 export { Channel };
