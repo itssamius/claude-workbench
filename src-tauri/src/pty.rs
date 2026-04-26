@@ -30,12 +30,14 @@ struct SessionHandle {
 
 pub struct PtyState {
     sessions: HashMap<String, SessionHandle>,
+    terminals: HashMap<String, SessionHandle>,
 }
 
 impl PtyState {
     pub fn new() -> Arc<Mutex<Self>> {
         Arc::new(Mutex::new(Self {
             sessions: HashMap::new(),
+            terminals: HashMap::new(),
         }))
     }
 }
@@ -237,4 +239,164 @@ pub async fn check_claude_version() -> Result<String, String> {
     String::from_utf8(output.stdout)
         .map(|s| s.trim().to_string())
         .map_err(|e| format!("Invalid UTF-8 in version output: {}", e))
+}
+
+#[tauri::command]
+pub async fn spawn_terminal(
+    state: tauri::State<'_, SharedPtyState>,
+    terminal_id: String,
+    working_dir: String,
+    on_event: Channel<PtyEvent>,
+) -> Result<(), String> {
+    let pty_system = native_pty_system();
+
+    let pair = pty_system
+        .openpty(PtySize {
+            rows: 24,
+            cols: 80,
+            pixel_width: 0,
+            pixel_height: 0,
+        })
+        .map_err(|e| format!("Failed to open PTY: {}", e))?;
+
+    let shell = std::env::var("SHELL").unwrap_or_else(|_| "/bin/zsh".to_string());
+    let mut cmd = CommandBuilder::new(shell);
+    cmd.cwd(&working_dir);
+    cmd.env("TERM", "xterm-256color");
+
+    let mut child = pair
+        .slave
+        .spawn_command(cmd)
+        .map_err(|e| format!("Failed to spawn shell: {}", e))?;
+
+    drop(pair.slave);
+
+    let mut reader = pair
+        .master
+        .try_clone_reader()
+        .map_err(|e| format!("Failed to clone reader: {}", e))?;
+
+    let writer = pair
+        .master
+        .take_writer()
+        .map_err(|e| format!("Failed to take writer: {}", e))?;
+
+    {
+        let mut s = state.lock().map_err(|e| e.to_string())?;
+        s.terminals.insert(
+            terminal_id.clone(),
+            SessionHandle {
+                writer,
+                master: pair.master,
+                status: SessionStatus::Running,
+                exit_code: None,
+            },
+        );
+    }
+
+    let output_channel = on_event.clone();
+    let tid_for_reader = terminal_id.clone();
+    tokio::task::spawn_blocking(move || {
+        let mut buf = [0u8; 4096];
+        loop {
+            match reader.read(&mut buf) {
+                Ok(0) => break,
+                Ok(n) => {
+                    let text = String::from_utf8_lossy(&buf[..n]).to_string();
+                    let _ = output_channel.send(PtyEvent::Output { data: text });
+                }
+                Err(e) => {
+                    let _ = output_channel.send(PtyEvent::Error {
+                        message: format!("Read error in terminal {}: {}", tid_for_reader, e),
+                    });
+                    break;
+                }
+            }
+        }
+    });
+
+    let state_arc = state.inner().clone();
+    let exit_channel = on_event;
+    let tid_for_exit = terminal_id;
+    tokio::task::spawn_blocking(move || {
+        let status = child.wait();
+        let code = status.ok().map(|s| s.exit_code());
+        let _ = exit_channel.send(PtyEvent::Exit { code });
+
+        if let Ok(mut s) = state_arc.lock() {
+            if let Some(handle) = s.terminals.get_mut(&tid_for_exit) {
+                handle.exit_code = code;
+                handle.status = match code {
+                    Some(0) | None => SessionStatus::Stopped,
+                    Some(_) => SessionStatus::Errored,
+                };
+            }
+        }
+    });
+
+    Ok(())
+}
+
+#[tauri::command]
+pub fn send_terminal_input(
+    state: tauri::State<'_, SharedPtyState>,
+    terminal_id: String,
+    data: String,
+) -> Result<(), String> {
+    let mut s = state.lock().map_err(|e| e.to_string())?;
+    let handle = s
+        .terminals
+        .get_mut(&terminal_id)
+        .ok_or_else(|| format!("Terminal {} not found", terminal_id))?;
+
+    handle
+        .writer
+        .write_all(data.as_bytes())
+        .map_err(|e| format!("Failed to write to PTY: {}", e))?;
+
+    handle
+        .writer
+        .flush()
+        .map_err(|e| format!("Failed to flush PTY: {}", e))?;
+
+    Ok(())
+}
+
+#[tauri::command]
+pub fn resize_terminal(
+    state: tauri::State<'_, SharedPtyState>,
+    terminal_id: String,
+    rows: u16,
+    cols: u16,
+) -> Result<(), String> {
+    let s = state.lock().map_err(|e| e.to_string())?;
+    let handle = s
+        .terminals
+        .get(&terminal_id)
+        .ok_or_else(|| format!("Terminal {} not found", terminal_id))?;
+
+    handle
+        .master
+        .resize(PtySize {
+            rows,
+            cols,
+            pixel_width: 0,
+            pixel_height: 0,
+        })
+        .map_err(|e| format!("Failed to resize PTY: {}", e))?;
+
+    Ok(())
+}
+
+#[tauri::command]
+pub fn close_terminal(
+    state: tauri::State<'_, SharedPtyState>,
+    terminal_id: String,
+) -> Result<(), String> {
+    let mut s = state.lock().map_err(|e| e.to_string())?;
+    if let Some(handle) = s.terminals.remove(&terminal_id) {
+        drop(handle.writer);
+        drop(handle.master);
+    }
+    Ok(())
 }
