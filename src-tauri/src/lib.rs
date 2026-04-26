@@ -7,6 +7,7 @@ pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
         .plugin(db::init_db().build())
+        .plugin(tauri_plugin_notification::init())
         .manage(pty::PtyState::new())
         .manage(fs::FsWatcherState::new())
         .invoke_handler(tauri::generate_handler![
@@ -19,6 +20,7 @@ pub fn run() {
             fs::read_file,
             fs::watch_directory,
             fs::unwatch_directory,
+            pty::check_claude_version,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

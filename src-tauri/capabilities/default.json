@@ -6,6 +6,7 @@
   "permissions": [
     "core:default",
     "dialog:default",
-    "sql:default"
+    "sql:default",
+    "notification:default"
   ]
 }
