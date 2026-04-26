@@ -11,6 +11,8 @@ import { checkClaudeVersion, dbLoadSetting } from "../lib/tauri";
 import { initNotifications } from "../lib/notifications";
 import { OnboardingModal } from "./OnboardingModal";
 import { useWorkspaceStore } from "../stores/workspaceStore";
+import { UpdateBanner } from "./UpdateBanner";
+import { useUpdaterStore } from "../stores/updaterStore";
 
 const resizeHandleClass =
   "w-[3px] bg-[var(--border)] hover:bg-[var(--accent)] transition-colors cursor-col-resize";
@@ -71,6 +73,10 @@ export function Layout() {
           "Claude CLI not found. Install it to use Claude Window.",
         );
       });
+  }, []);
+
+  useEffect(() => {
+    useUpdaterStore.getState().checkForUpdate();
   }, []);
 
   useEffect(() => {
@@ -137,6 +143,7 @@ export function Layout() {
 
   return (
     <div className="h-full flex flex-col">
+      <UpdateBanner />
       {versionWarning && (
         <div className="flex items-center justify-between px-4 py-2 bg-[var(--warning,#f59e0b)] text-black text-xs">
           <span>{versionWarning}</span>
