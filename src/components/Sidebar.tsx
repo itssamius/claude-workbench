@@ -64,6 +64,7 @@ export function Sidebar() {
 
   const [filter, setFilter] = useState("");
   const [renamingId, setRenamingId] = useState<string | null>(null);
+  const [settingsSessionId, setSettingsSessionId] = useState<string | null>(null);
 
   const sessionList = Object.values(sessions)
     .filter((s) => {
@@ -178,6 +179,16 @@ export function Sidebar() {
                 </span>
               )}
               <div className="flex gap-2 ml-2 flex-shrink-0">
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setSettingsSessionId(session.id);
+                  }}
+                  className="text-xs text-[var(--text-secondary)] hover:text-[var(--text-primary)]"
+                  title="Session settings"
+                >
+                  ⚙
+                </button>
                 {(session.status === "stopped" ||
                   session.status === "errored" ||
                   session.status === "crashed") && (
@@ -227,6 +238,12 @@ export function Sidebar() {
           {Object.values(sessions).filter((s) => s.status === "running").length}{" "}
           running / {Object.keys(sessions).length} total
         </div>
+      )}
+      {settingsSessionId && (
+        <SessionSettingsModal
+          sessionId={settingsSessionId}
+          onClose={() => setSettingsSessionId(null)}
+        />
       )}
     </aside>
   );
