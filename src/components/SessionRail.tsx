@@ -3,6 +3,7 @@ import type { Session } from '../data/sample';
 
 interface Props {
   sessions: Session[];
+  onSettingsOpen: () => void;
 }
 
 const STATE_DOT: Record<Session['state'], string> = {
@@ -12,7 +13,7 @@ const STATE_DOT: Record<Session['state'], string> = {
   idle:     'var(--text-mute)',
 };
 
-export default function SessionRail({ sessions }: Props) {
+export default function SessionRail({ sessions, onSettingsOpen }: Props) {
   return (
     <div
       style={{
@@ -121,6 +122,8 @@ export default function SessionRail({ sessions }: Props) {
 
       {/* Settings */}
       <button
+        onClick={onSettingsOpen}
+        title="Settings"
         style={{
           width: 36,
           height: 36,

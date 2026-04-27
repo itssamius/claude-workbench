@@ -60,6 +60,11 @@
   --text-mute: #6b6051;
 }
 
+/* ── Compact density ── */
+:root { --spacing-unit: 1.0; }
+[data-density="compact"] { --spacing-unit: 0.8; }
+[data-density="compact"] body { font-size: 12px; }
+
 /* ── Reset ── */
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 

@@ -1,11 +1,23 @@
+import { useState } from 'react';
 import TitleBar from './components/TitleBar';
 import SessionRail from './components/SessionRail';
 import Conversation from './components/Conversation';
 import ReviewPanel from './components/ReviewPanel';
 import StatusBar from './components/StatusBar';
+import DebugMenu from './components/DebugMenu';
+import Onboarding from './components/Onboarding';
+import SettingsOverlay from './components/Settings';
 import { SESSIONS, TASK, MESSAGES, DIFF_FILES, DIFF_LINES } from './data/sample';
 
 export default function App() {
+  const [onboardingDone, setOnboardingDone] = useState(
+    () => localStorage.getItem('workbench-profile') !== null
+  );
+  const [showSettings, setShowSettings] = useState(false);
+
+  if (!onboardingDone) {
+    return <Onboarding onComplete={() => setOnboardingDone(true)} />;
+  }
 
   return (
     <div
@@ -24,7 +36,7 @@ export default function App() {
       />
 
       <div style={{ display: 'flex', flex: 1, overflow: 'hidden' }}>
-        <SessionRail sessions={SESSIONS} />
+        <SessionRail sessions={SESSIONS} onSettingsOpen={() => setShowSettings(true)} />
         <Conversation task={TASK} messages={MESSAGES} />
         <ReviewPanel
           files={DIFF_FILES}
@@ -43,6 +55,12 @@ export default function App() {
         testsPassed={4}
         migrationsPending={1}
       />
+
+      <DebugMenu />
+
+      {showSettings && (
+        <SettingsOverlay onClose={() => setShowSettings(false)} />
+      )}
     </div>
   );
 }
