@@ -1,7 +1,7 @@
 {
-  "name": "claude-window",
+  "name": "claude-workbench",
   "private": true,
-  "version": "0.1.0",
+  "version": "0.42.1",
   "type": "module",
   "scripts": {
     "dev": "vite",
@@ -10,29 +10,23 @@
     "tauri": "tauri"
   },
   "dependencies": {
-    "@monaco-editor/react": "^4.7.0",
-    "@tauri-apps/api": "^2",
-    "@tauri-apps/plugin-dialog": "^2",
-    "@tauri-apps/plugin-notification": "^2",
-    "@tauri-apps/plugin-process": "^2.3.1",
-    "@tauri-apps/plugin-sql": "^2",
-    "@tauri-apps/plugin-updater": "^2.10.1",
-    "@xterm/addon-fit": "^0.10",
-    "@xterm/addon-webgl": "^0.18",
-    "@xterm/xterm": "^5",
-    "react": "^19.1.0",
-    "react-dom": "^19.1.0",
-    "react-resizable-panels": "^2",
-    "zustand": "^5"
+    "@tauri-apps/api": "^2.5.0",
+    "@tauri-apps/plugin-opener": "^2.2.6",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "lucide-react": "^0.511.0",
+    "@fontsource/inter": "^5.1.1",
+    "@fontsource/jetbrains-mono": "^5.1.0"
   },
   "devDependencies": {
-    "@tailwindcss/vite": "^4",
-    "@tauri-apps/cli": "^2",
-    "@types/react": "^19.1.8",
-    "@types/react-dom": "^19.1.6",
-    "@vitejs/plugin-react": "^4.6.0",
-    "tailwindcss": "^4",
-    "typescript": "~5.8.3",
-    "vite": "^7.0.4"
+    "@tauri-apps/cli": "^2.5.0",
+    "@types/react": "^18.3.20",
+    "@types/react-dom": "^18.3.5",
+    "@vitejs/plugin-react": "^4.3.4",
+    "typescript": "^5.6.2",
+    "vite": "^6.3.5",
+    "tailwindcss": "^3.4.17",
+    "postcss": "^8.4.49",
+    "autoprefixer": "^10.4.20"
   }
 }

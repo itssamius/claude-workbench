@@ -1,29 +1,86 @@
-@import "tailwindcss";
+/* Atelier fonts */
+@import '@fontsource/inter/300.css';
+@import '@fontsource/inter/400.css';
+@import '@fontsource/inter/500.css';
+@import '@fontsource/inter/600.css';
+@import '@fontsource/jetbrains-mono/400.css';
+@import '@fontsource/jetbrains-mono/500.css';
 
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* ── Atelier light tokens ── */
 :root {
-  --bg-primary: #1e1e2e;
-  --bg-secondary: #181825;
-  --bg-surface: #252536;
-  --text-primary: #cdd6f4;
-  --text-secondary: #a6adc8;
-  --accent: #89b4fa;
-  --success: #a6e3a1;
-  --warning: #f9e2af;
-  --error: #f38ba8;
-  --border: #313244;
+  /* Surfaces */
+  --bg:        #f5f1ea;
+  --bg-panel:  #ede7dc;
+  --bg-paper:  #fffdf9;
+  --border:    #d8cfbe;
+
+  /* Accent */
+  --accent:      #2d6b5d;
+  --accent-soft: #dde9e5;
+
+  /* Text */
+  --text:      #2a241d;
+  --text-dim:  #6b6051;
+  --text-mute: #9a8e7a;
+
+  /* Semantic */
+  --green:     #3f7a4c;
+  --green-bg:  #e8f5ea;
+  --red:       #a0392f;
+  --red-bg:    #fce8e6;
+  --amber:     #c89020;
+  --amber-bg:  #fef3d0;
+
+  /* Typography */
+  --font-serif: 'Iowan Old Style', Charter, Georgia, serif;
+  --font-sans:  'Inter', 'SF Pro Text', -apple-system, system-ui, sans-serif;
+  --font-mono:  'JetBrains Mono', 'Fira Mono', monospace;
+
+  /* Layout */
+  --rail-w:       72px;
+  --review-w:     420px;
+  --titlebar-h:   44px;
+  --statusbar-h:  26px;
 }
 
-* {
-  margin: 0;
-  padding: 0;
-  box-sizing: border-box;
+/* ── Dark mode (wired now, shipped step 2) ── */
+[data-theme="dark"] {
+  --bg:        #1d1a14;
+  --bg-panel:  #252118;
+  --bg-paper:  #1a1712;
+  --border:    #3d362a;
+  --accent:    #5fa896;
+  --accent-soft: #1e3530;
+  --text:      #f0e9da;
+  --text-dim:  #a89a88;
+  --text-mute: #6b6051;
 }
+
+/* ── Reset ── */
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
 html, body, #root {
-  height: 100%;
   width: 100%;
+  height: 100%;
   overflow: hidden;
-  background-color: var(--bg-primary);
-  color: var(--text-primary);
-  font-family: 'Menlo', 'Monaco', 'Cascadia Code', monospace;
 }
+
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--font-sans);
+  font-size: 13px;
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* ── Scrollbars ── */
+::-webkit-scrollbar            { width: 7px; height: 7px; }
+::-webkit-scrollbar-thumb      { background: rgba(0,0,0,0.13); border-radius: 4px; }
+::-webkit-scrollbar-track      { background: transparent; }
+[data-theme="dark"] ::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.1); }

@@ -1,22 +1,20 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "Claude Window",
-  "version": "0.1.0",
-  "identifier": "com.claude-window.dev",
-  "build": {
-    "beforeDevCommand": "npm run dev",
-    "devUrl": "http://localhost:1420",
-    "beforeBuildCommand": "npm run build",
-    "frontendDist": "../dist"
-  },
+  "productName": "Claude Workbench",
+  "version": "0.42.1",
+  "identifier": "com.claude.workbench",
   "app": {
     "windows": [
       {
-        "title": "Claude Window",
-        "width": 1200,
-        "height": 800,
-        "minWidth": 800,
-        "minHeight": 600
+        "label": "main",
+        "title": "Claude Workbench",
+        "width": 1440,
+        "height": 900,
+        "minWidth": 900,
+        "minHeight": 600,
+        "resizable": true,
+        "decorations": false,
+        "center": true
       }
     ],
     "security": {
@@ -32,13 +30,12 @@
       "icons/128x128@2x.png",
       "icons/icon.icns",
       "icons/icon.ico"
-    ],
-    "createUpdaterArtifacts": true
+    ]
   },
-  "plugins": {
-    "updater": {
-      "pubkey": "",
-      "endpoints": ["https://github.com/OWNER/claude-window/releases/latest/download/latest.json"]
-    }
+  "build": {
+    "beforeDevCommand": "npm run dev",
+    "devUrl": "http://localhost:1420",
+    "beforeBuildCommand": "npm run build",
+    "frontendDist": "../dist"
   }
 }

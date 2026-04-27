@@ -1,12 +1,14 @@
 [package]
-name = "claude-window"
-version = "0.1.0"
-description = "Claude Code Agent Session Manager"
-authors = ["sam"]
+name = "claude-workbench"
+version = "0.42.1"
+description = "Claude Workbench — Desktop agent shell for Claude Code"
+authors = []
 edition = "2021"
+rust-version = "1.77.2"
+default-run = "claude-workbench"
 
 [lib]
-name = "claude_window_lib"
+name = "claude_workbench_lib"
 crate-type = ["staticlib", "cdylib", "rlib"]
 
 [build-dependencies]
@@ -14,15 +16,16 @@ tauri-build = { version = "2", features = [] }
 
 [dependencies]
 tauri = { version = "2", features = [] }
-tauri-plugin-dialog = "2"
+tauri-plugin-opener = "2"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
-portable-pty = "0.9"
-tokio = { version = "1", features = ["sync", "process"] }
-uuid = { version = "1", features = ["v4"] }
-notify = { version = "7", features = ["macos_fsevent"] }
-notify-debouncer-mini = "0.5"
-tauri-plugin-sql = { version = "2", features = ["sqlite"] }
-tauri-plugin-notification = "2"
-tauri-plugin-updater = "2"
-tauri-plugin-process = "2"
+
+[profile.dev]
+incremental = true
+
+[profile.release]
+codegen-units = 1
+lto = true
+opt-level = "s"
+panic = "abort"
+strip = true
