@@ -1,6 +1,7 @@
-import { useRef } from 'react';
+import { useRef, useState } from 'react';
 import { SendHorizonal, Paperclip } from 'lucide-react';
 import type { Message, PlanItem, ToolCall } from '../data/sample';
+import { MESSAGES } from '../data/sample';
 
 /* ── Tool row ── */
 function ToolRow({ tc }: { tc: ToolCall }) {
@@ -266,8 +267,23 @@ function MessageBlock({ msg }: { msg: Message }) {
 }
 
 /* ── Composer ── */
-function Composer() {
+function Composer({ onSubmit, isRunning }: { onSubmit: (prompt: string) => void; isRunning: boolean }) {
   const textRef = useRef<HTMLTextAreaElement>(null);
+  const [text, setText] = useState('');
+
+  function handleSend() {
+    const trimmed = text.trim();
+    if (!trimmed || isRunning) return;
+    onSubmit(trimmed);
+    setText('');
+  }
+
+  function handleKeyDown(e: React.KeyboardEvent<HTMLTextAreaElement>) {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault();
+      handleSend();
+    }
+  }
 
   return (
     <div
@@ -285,6 +301,9 @@ function Composer() {
       >
         <textarea
           ref={textRef}
+          value={text}
+          onChange={(e) => setText(e.target.value)}
+          onKeyDown={handleKeyDown}
           placeholder="Reply to Claude…"
           rows={2}
           style={{
@@ -334,6 +353,8 @@ function Composer() {
 
           {/* Send */}
           <button
+            onClick={handleSend}
+            disabled={isRunning || !text.trim()}
             style={{
               width: 30,
               height: 30,
@@ -343,9 +364,11 @@ function Composer() {
               background: 'var(--green)',
               border: 'none',
               borderRadius: 7,
-              cursor: 'pointer',
+              cursor: isRunning ? 'not-allowed' : 'pointer',
               color: '#fff',
               flexShrink: 0,
+              opacity: isRunning ? 0.5 : 1,
+              animation: isRunning ? 'pulse 1.5s ease-in-out infinite' : 'none',
             }}
           >
             <SendHorizonal size={14} />
@@ -388,9 +411,14 @@ interface Props {
     state: 'working';
   };
   messages: Message[];
+  planItems?: PlanItem[];
+  onSubmit: (prompt: string) => void;
+  isRunning: boolean;
 }
 
-export default function Conversation({ task, messages }: Props) {
+export default function Conversation({ task, messages, onSubmit, isRunning }: Props) {
+  // Show live messages if we have any, otherwise fall back to sample data
+  const displayMessages = messages.length > 0 ? messages : MESSAGES;
   return (
     <div
       style={{
@@ -498,7 +526,7 @@ export default function Conversation({ task, messages }: Props) {
 
           {/* Message list */}
           <div style={{ paddingBottom: 20 }}>
-            {messages.map((msg) => (
+            {displayMessages.map((msg) => (
               <MessageBlock key={msg.id} msg={msg} />
             ))}
           </div>
@@ -517,7 +545,7 @@ export default function Conversation({ task, messages }: Props) {
           boxSizing: 'border-box',
         }}
       >
-        <Composer />
+        <Composer onSubmit={onSubmit} isRunning={isRunning} />
       </div>
     </div>
   );

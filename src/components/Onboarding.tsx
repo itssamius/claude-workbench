@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { invoke } from '@tauri-apps/api/core';
 
 interface Props {
   onComplete: () => void;
@@ -831,14 +832,19 @@ function FirstTaskScreen({
 export default function Onboarding({ onComplete }: Props) {
   const [step, setStep] = useState(0);
 
-  function handleComplete(taskDescription: string) {
+  async function handleComplete(taskDescription: string) {
     const profile = {
       accountId: 'user@example.com',
       projectPath: '/tmp',
       defaultModel: 'claude-sonnet-4-6',
       taskDescription,
     };
-    localStorage.setItem('workbench-profile', JSON.stringify(profile));
+    try {
+      await invoke('save_profile', { data: JSON.stringify(profile) });
+    } catch {
+      // Fallback: if Tauri command fails (e.g. in dev/browser), ignore silently
+    }
+    localStorage.setItem('workbench-profile', 'saved'); // keep as gate check
     onComplete();
   }
 

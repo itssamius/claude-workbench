@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { Check } from 'lucide-react';
+import { invoke } from '@tauri-apps/api/core';
 
 interface Props {
   onClose: () => void;
@@ -53,7 +54,12 @@ function loadAppearance(): AppearanceState {
   return { theme: 'light', density: 'comfortable', accent: '#2d6b5d' };
 }
 
-function saveAppearance(state: AppearanceState) {
+async function saveAppearance(state: AppearanceState) {
+  try {
+    await invoke('save_appearance', { data: JSON.stringify(state) });
+  } catch {
+    // Fallback: if Tauri command fails, ignore silently
+  }
   localStorage.setItem('workbench-appearance', JSON.stringify(state));
 }
 
@@ -282,8 +288,8 @@ function AppearancePane() {
     setState((prev) => ({ ...prev, ...patch }));
   }
 
-  function handleSave() {
-    saveAppearance(state);
+  async function handleSave() {
+    await saveAppearance(state);
   }
 
   const THEME_CARDS: { value: Theme; label: string; swatch: React.ReactNode }[] = [

@@ -2,6 +2,26 @@ import { useState } from 'react';
 import { FileCode, X, Check } from 'lucide-react';
 import type { DiffFile, DiffLine } from '../data/sample';
 
+/* ── Unified diff parser ── */
+function parsePatch(patch: string): DiffLine[] {
+  const lines: DiffLine[] = [];
+  let beforeLine = 0, afterLine = 0;
+  for (const raw of patch.split('\n')) {
+    if (raw.startsWith('@@')) {
+      const m = raw.match(/@@ -(\d+)(?:,\d+)? \+(\d+)/);
+      if (m) { beforeLine = parseInt(m[1]); afterLine = parseInt(m[2]); }
+      lines.push({ type: 'hunk', content: raw });
+    } else if (raw.startsWith('+') && !raw.startsWith('+++')) {
+      lines.push({ type: 'add', after: afterLine++, content: raw.slice(1) });
+    } else if (raw.startsWith('-') && !raw.startsWith('---')) {
+      lines.push({ type: 'del', before: beforeLine++, content: raw.slice(1) });
+    } else if (raw.startsWith(' ')) {
+      lines.push({ type: 'context', before: beforeLine++, after: afterLine++, content: raw.slice(1) });
+    }
+  }
+  return lines;
+}
+
 /* ── Diff line ── */
 function DiffLineRow({ line }: { line: DiffLine }) {
   if (line.type === 'hunk') {
@@ -178,11 +198,13 @@ function FileTab({
 interface Props {
   files: DiffFile[];
   diffLines: DiffLine[];
+  diffPatch?: string;
   totalAdditions: number;
   totalDeletions: number;
 }
 
-export default function ReviewPanel({ files, diffLines, totalAdditions, totalDeletions }: Props) {
+export default function ReviewPanel({ files, diffLines, diffPatch, totalAdditions, totalDeletions }: Props) {
+  const displayLines = diffPatch && diffPatch.trim() ? parsePatch(diffPatch) : diffLines;
   const [activeIdx, setActiveIdx] = useState(0);
 
   return (
@@ -253,7 +275,7 @@ export default function ReviewPanel({ files, diffLines, totalAdditions, totalDel
           background: 'var(--bg-paper)',
         }}
       >
-        {diffLines.map((line, i) => (
+        {displayLines.map((line, i) => (
           <DiffLineRow key={i} line={line} />
         ))}
       </div>
