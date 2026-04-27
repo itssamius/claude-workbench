@@ -452,7 +452,7 @@ function SignInScreen({
   onNext,
   onBack,
 }: {
-  onNext: () => void;
+  onNext: (apiKey?: string) => void;
   onBack: () => void;
 }) {
   const [apiKey, setApiKey] = useState('');
@@ -464,7 +464,7 @@ function SignInScreen({
       headline="Connect your account"
       lede="Sign in with your Anthropic account or paste an API key."
       onBack={onBack}
-      onCta={onNext}
+      onCta={() => onNext(apiKey)}
       ctaLabel="Continue →"
     >
       <div style={{ maxWidth: 400, display: 'flex', flexDirection: 'column', gap: 16 }}>
@@ -560,7 +560,7 @@ function SignInScreen({
 
         {/* Skip link */}
         <button
-          onClick={onNext}
+          onClick={() => onNext(apiKey)}
           style={{
             fontFamily: 'var(--font-sans)',
             fontSize: 13,
@@ -584,14 +584,14 @@ function OpenProjectScreen({
   onNext,
   onBack,
 }: {
-  onNext: () => void;
+  onNext: (path?: string) => void;
   onBack: () => void;
 }) {
   const [chosen, setChosen] = useState('');
 
-  function handleChoose() {
-    // Stub: Tauri FS not enabled — just mark a placeholder path
-    setChosen('/path/to/project');
+  async function handleChoose() {
+    const dir = await invoke<string | null>('choose_directory');
+    if (dir) setChosen(dir);
   }
 
   return (
@@ -601,7 +601,7 @@ function OpenProjectScreen({
       headline="Open a project directory"
       lede="Point Claude Workbench at a git repository to get started."
       onBack={onBack}
-      onCta={onNext}
+      onCta={() => onNext(chosen)}
       ctaLabel="Continue →"
     >
       <div style={{ maxWidth: 440, display: 'flex', flexDirection: 'column', gap: 12 }}>
@@ -640,7 +640,7 @@ function OpenProjectScreen({
                 />
               </svg>
               <button
-                onClick={handleChoose}
+                onClick={() => { handleChoose(); }}
                 style={{
                   fontFamily: 'var(--font-sans)',
                   fontSize: 13,
@@ -660,7 +660,7 @@ function OpenProjectScreen({
 
         {/* Skip link */}
         <button
-          onClick={onNext}
+          onClick={() => onNext(chosen)}
           style={{
             fontFamily: 'var(--font-sans)',
             fontSize: 13,
@@ -831,12 +831,15 @@ function FirstTaskScreen({
 // ── Root Onboarding component ────────────────────────────────────────────────
 export default function Onboarding({ onComplete }: Props) {
   const [step, setStep] = useState(0);
+  const [apiKey, setApiKey] = useState('');
+  const [projectPath, setProjectPath] = useState('');
 
   async function handleComplete(taskDescription: string) {
     const profile = {
       accountId: 'user@example.com',
-      projectPath: '/tmp',
+      projectPath: projectPath || '/tmp',
       defaultModel: 'claude-sonnet-4-6',
+      apiKey,
       taskDescription,
     };
     try {
@@ -852,9 +855,19 @@ export default function Onboarding({ onComplete }: Props) {
     case 0:
       return <WelcomeScreen onNext={() => setStep(1)} />;
     case 1:
-      return <SignInScreen onNext={() => setStep(2)} onBack={() => setStep(0)} />;
+      return (
+        <SignInScreen
+          onNext={(key) => { setApiKey(key ?? ''); setStep(2); }}
+          onBack={() => setStep(0)}
+        />
+      );
     case 2:
-      return <OpenProjectScreen onNext={() => setStep(3)} onBack={() => setStep(1)} />;
+      return (
+        <OpenProjectScreen
+          onNext={(path) => { setProjectPath(path ?? ''); setStep(3); }}
+          onBack={() => setStep(1)}
+        />
+      );
     case 3:
       return <FirstTaskScreen onComplete={handleComplete} onBack={() => setStep(2)} />;
     default:

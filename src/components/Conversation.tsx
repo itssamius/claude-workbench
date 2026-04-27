@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react';
+import { useRef, useState, useEffect } from 'react';
 import { SendHorizonal, Paperclip } from 'lucide-react';
 import type { Message, PlanItem, ToolCall } from '../data/sample';
 import { MESSAGES } from '../data/sample';
@@ -414,11 +414,20 @@ interface Props {
   planItems?: PlanItem[];
   onSubmit: (prompt: string) => void;
   isRunning: boolean;
+  permissionBanners?: React.ReactNode;
 }
 
-export default function Conversation({ task, messages, onSubmit, isRunning }: Props) {
+export default function Conversation({ task, messages, onSubmit, isRunning, permissionBanners }: Props) {
   // Show live messages if we have any, otherwise fall back to sample data
   const displayMessages = messages.length > 0 ? messages : MESSAGES;
+
+  const scrollRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (scrollRef.current) {
+      scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
+    }
+  }, [messages]);
+
   return (
     <div
       style={{
@@ -432,6 +441,7 @@ export default function Conversation({ task, messages, onSubmit, isRunning }: Pr
     >
       {/* Scrollable area */}
       <div
+        ref={scrollRef}
         style={{
           flex: 1,
           overflowY: 'auto',
@@ -533,7 +543,7 @@ export default function Conversation({ task, messages, onSubmit, isRunning }: Pr
         </div>
       </div>
 
-      {/* Sticky composer */}
+      {/* Sticky bottom area */}
       <div
         style={{
           flexShrink: 0,
@@ -545,6 +555,11 @@ export default function Conversation({ task, messages, onSubmit, isRunning }: Pr
           boxSizing: 'border-box',
         }}
       >
+        {permissionBanners && (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginBottom: 8 }}>
+            {permissionBanners}
+          </div>
+        )}
         <Composer onSubmit={onSubmit} isRunning={isRunning} />
       </div>
     </div>
