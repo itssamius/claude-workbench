@@ -32,6 +32,32 @@ npm run tauri dev
 npm run tauri build
 ```
 
+## Release gates
+
+Every pull request must pass the CI workflow (`.github/workflows/ci.yml`) before merge. The checks are:
+
+| Gate | What it verifies |
+|---|---|
+| `tsc --noEmit` | TypeScript compiles with no type errors under `strict: true` |
+| `npm run build` | Vite produces a clean frontend bundle (no missing imports, no build-time errors) |
+| `cargo check` | All Rust crates type-check; no missing dependencies |
+| `cargo test` | All Rust unit tests pass (currently zero tests; new tests added in Phase 4) |
+
+**What CI does NOT cover yet (known gaps):**
+
+- No frontend unit tests — Vitest/RTL added in Phase 4.
+- No end-to-end tests — Tauri's desktop window cannot be driven headlessly in GitHub Actions without additional infrastructure.
+- No release build (`tauri build`) in CI — the Tauri bundler requires macOS code-signing credentials not available in the shared runner.
+- No `cargo clippy` lint enforcement — added in Phase 4 once the codebase is stable.
+
+**Current security posture (as of this baseline):**
+
+- **Worktree isolation: NOT enforced.** Claude runs directly in the project root. The `create_worktree` / `remove_worktree` commands exist in Rust but are not called automatically on task start. Implemented in Phase 1.
+- **Permission gating: NOT enforced.** Claude Code is launched with `--dangerously-skip-permissions`; the permission UI is wired to emit events but does not pause execution or block tool calls. Implemented in Phase 2.
+- **Path security: PARTIAL.** `write_file` rejects paths outside `$HOME` via `canonicalize()` + `starts_with(home)`. `read_file` and `open_path` have no equivalent guard. Tightened in Phase 3.
+- **CSP: DISABLED.** `tauri.conf.json` sets `"csp": null`. A strict policy is added in Phase 3.
+- **API key storage: NOT hardened.** The Anthropic key is read from the environment / Claude Code CLI config; it is not stored in the OS keychain by this app. Addressed in Phase 3.
+
 ## Known limitations
 
 This is an early-stage release. Several features are stubbed or in progress:
