@@ -673,6 +673,75 @@ async fn remove_worktree(project_path: String, worktree_path: String) -> Result<
     Ok(())
 }
 
+#[derive(Serialize)]
+struct WorktreeEntry {
+    path: String,
+    branch: String,
+    locked: bool,
+}
+
+#[tauri::command]
+async fn list_worktrees(project_path: String) -> Result<Vec<WorktreeEntry>, String> {
+    let output = std::process::Command::new("git")
+        .args(["worktree", "list", "--porcelain"])
+        .current_dir(&project_path)
+        .output()
+        .map_err(|e| format!("Failed to run git worktree list: {e}"))?;
+
+    if !output.status.success() {
+        return Err(String::from_utf8_lossy(&output.stderr).trim().to_string());
+    }
+
+    let text = String::from_utf8_lossy(&output.stdout);
+    let mut entries: Vec<WorktreeEntry> = Vec::new();
+
+    for stanza in text.split("\n\n") {
+        let stanza = stanza.trim();
+        if stanza.is_empty() {
+            continue;
+        }
+        let mut path = String::new();
+        let mut branch = String::new();
+        let mut locked = false;
+
+        for line in stanza.lines() {
+            if let Some(p) = line.strip_prefix("worktree ") {
+                path = p.trim().to_string();
+            } else if let Some(b) = line.strip_prefix("branch ") {
+                branch = b.trim()
+                    .strip_prefix("refs/heads/")
+                    .unwrap_or(b.trim())
+                    .to_string();
+            } else if line.starts_with("locked") {
+                locked = true;
+            }
+        }
+
+        if !path.is_empty() {
+            entries.push(WorktreeEntry { path, branch, locked });
+        }
+    }
+
+    Ok(entries)
+}
+
+#[tauri::command]
+async fn prune_worktrees(project_path: String) -> Result<(), String> {
+    let output = std::process::Command::new("git")
+        .args(["worktree", "prune"])
+        .current_dir(&project_path)
+        .output()
+        .map_err(|e| format!("Failed to run git worktree prune: {e}"))?;
+
+    if !output.status.success() {
+        eprintln!(
+            "git worktree prune warning: {}",
+            String::from_utf8_lossy(&output.stderr).trim()
+        );
+    }
+    Ok(())
+}
+
 // ── Automations persistence ───────────────────────────────────────────────────
 
 #[tauri::command]
@@ -1173,6 +1242,8 @@ pub fn run() {
             git_discard,
             create_worktree,
             remove_worktree,
+            list_worktrees,
+            prune_worktrees,
             load_automations,
             save_automations,
             list_installed_plugins,
