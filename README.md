@@ -1,8 +1,8 @@
-# Claude Window
+# Claude Workbench
 
 A native desktop app for running [Claude Code](https://docs.anthropic.com/en/docs/claude-code) as a persistent, multi-session agent — built with Tauri 2, React, and Rust.
 
-![Claude Window](docs/screenshot.png)
+![Claude Workbench](docs/screenshot.png)
 
 ## What it does
 
