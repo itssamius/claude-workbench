@@ -41,7 +41,7 @@
   --font-mono:  'JetBrains Mono', 'Fira Mono', monospace;
 
   /* Layout */
-  --rail-w:       72px;
+  --rail-w:       240px;
   --review-w:     420px;
   --titlebar-h:   44px;
   --statusbar-h:  26px;
@@ -89,3 +89,98 @@ body {
 ::-webkit-scrollbar-thumb      { background: rgba(0,0,0,0.13); border-radius: 4px; }
 ::-webkit-scrollbar-track      { background: transparent; }
 [data-theme="dark"] ::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.1); }
+
+/* ── Markdown prose (assistant messages) ── */
+.md-prose {
+  font-family: var(--font-serif);
+  font-size: 15px;
+  line-height: 1.7;
+  color: var(--text);
+}
+.md-prose p           { margin: 0 0 0.7em; }
+.md-prose p:last-child{ margin-bottom: 0; }
+.md-prose h1, .md-prose h2, .md-prose h3, .md-prose h4 {
+  font-family: var(--font-serif);
+  font-weight: 600;
+  line-height: 1.25;
+  margin: 1.1em 0 0.4em;
+  letter-spacing: -0.01em;
+}
+.md-prose h1 { font-size: 1.35em; }
+.md-prose h2 { font-size: 1.20em; }
+.md-prose h3 { font-size: 1.08em; }
+.md-prose h4 { font-size: 1.00em; }
+.md-prose ul, .md-prose ol { margin: 0.4em 0 0.8em; padding-left: 1.4em; }
+.md-prose li               { margin: 0.15em 0; }
+.md-prose blockquote {
+  margin: 0.6em 0;
+  padding: 4px 12px;
+  border-left: 2px solid var(--border);
+  color: var(--text-dim);
+  font-style: italic;
+}
+.md-prose hr {
+  border: none;
+  border-top: 1px solid var(--border);
+  margin: 1.2em 0;
+}
+.md-prose a {
+  color: var(--accent);
+  text-decoration: none;
+  border-bottom: 1px solid color-mix(in oklab, var(--accent) 35%, transparent);
+}
+.md-prose a:hover { border-bottom-color: var(--accent); }
+.md-prose strong  { font-weight: 600; color: var(--text); }
+.md-prose em      { font-style: italic; }
+
+.md-prose code, .md-prose .md-inline-code {
+  font-family: var(--font-mono);
+  font-size: 0.86em;
+  background: var(--bg-paper);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 1px 5px;
+  color: var(--text);
+}
+.md-prose pre {
+  background: var(--bg-paper);
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  padding: 10px 12px;
+  margin: 0.5em 0 0.9em;
+  overflow-x: auto;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  line-height: 1.5;
+}
+.md-prose pre code {
+  background: transparent;
+  border: none;
+  padding: 0;
+  font-size: inherit;
+}
+
+.md-prose table {
+  border-collapse: collapse;
+  margin: 0.6em 0 1em;
+  font-family: var(--font-sans);
+  font-size: 13px;
+}
+.md-prose th, .md-prose td {
+  border: 1px solid var(--border);
+  padding: 5px 10px;
+  text-align: left;
+}
+.md-prose th { background: var(--bg-paper); font-weight: 600; }
+
+/* ── Thinking dots ── */
+@keyframes thinking-pulse {
+  0%, 80%, 100% { opacity: 0.25; }
+  40%           { opacity: 1; }
+}
+.thinking-dot {
+  display: inline-block;
+  font-size: 1.4em;
+  line-height: 0.7;
+  animation: thinking-pulse 1.2s ease-in-out infinite;
+}

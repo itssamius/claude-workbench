@@ -18,13 +18,7 @@ type NavItem =
 
 const NAV_ITEMS: NavItem[] = [
   'Account',
-  'Models & defaults',
-  'Permissions',
-  'Editor integrations',
-  'Keyboard',
   'Appearance',
-  'MCP & plugins',
-  'Notifications',
 ];
 
 const ACCENT_COLORS = [
@@ -67,6 +61,26 @@ async function saveAppearance(state: AppearanceState) {
 
 function AccountPane() {
   const [apiKey, setApiKey] = useState('sk-ant-••••••••••••••••••••');
+
+  async function handleSave() {
+    try {
+      const existing = await invoke<string>('load_profile').catch(() => '{}');
+      const profile = JSON.parse(existing || '{}');
+      profile.apiKey = apiKey;
+      await invoke('save_profile', { data: JSON.stringify(profile) });
+    } catch {
+      // ignore
+    }
+  }
+
+  async function handleSignOut() {
+    try {
+      await invoke('save_profile', { data: JSON.stringify({}) });
+    } catch {
+      // ignore
+    }
+    window.location.reload();
+  }
 
   return (
     <div>
@@ -213,6 +227,7 @@ function AccountPane() {
             }}
           />
           <button
+            onClick={handleSave}
             style={{
               flexShrink: 0,
               fontFamily: 'var(--font-sans)',
@@ -256,6 +271,7 @@ function AccountPane() {
           Danger zone
         </div>
         <button
+          onClick={handleSignOut}
           style={{
             fontFamily: 'var(--font-sans)',
             fontSize: 13,

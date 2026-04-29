@@ -468,64 +468,6 @@ function SignInScreen({
       ctaLabel="Continue →"
     >
       <div style={{ maxWidth: 400, display: 'flex', flexDirection: 'column', gap: 16 }}>
-        {/* OAuth button */}
-        <button
-          style={{
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            gap: 10,
-            height: 44,
-            width: '100%',
-            background: 'var(--bg-paper)',
-            border: '1px solid var(--border)',
-            borderRadius: 8,
-            fontFamily: 'var(--font-sans)',
-            fontSize: 14,
-            fontWeight: 500,
-            color: 'var(--text)',
-            cursor: 'pointer',
-          }}
-        >
-          {/* Anthropic logo placeholder */}
-          <div
-            style={{
-              width: 20,
-              height: 20,
-              borderRadius: 4,
-              background: 'var(--accent)',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              flexShrink: 0,
-            }}
-          >
-            <span style={{ fontFamily: 'var(--font-serif)', fontSize: 11, color: '#fff', fontWeight: 700 }}>A</span>
-          </div>
-          Continue with Anthropic
-        </button>
-
-        {/* Divider */}
-        <div
-          style={{
-            display: 'flex',
-            alignItems: 'center',
-            gap: 12,
-          }}
-        >
-          <div style={{ flex: 1, height: 1, background: 'var(--border)' }} />
-          <span
-            style={{
-              fontFamily: 'var(--font-sans)',
-              fontSize: 12,
-              color: 'var(--text-mute)',
-            }}
-          >
-            or
-          </span>
-          <div style={{ flex: 1, height: 1, background: 'var(--border)' }} />
-        </div>
-
         {/* API key input */}
         <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
           <label
@@ -739,42 +681,6 @@ function FirstTaskScreen({
               lineHeight: 1.55,
             }}
           />
-          {/* Simulated git branch indicator */}
-          <div
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'space-between',
-              marginTop: 8,
-              paddingTop: 8,
-              borderTop: '1px solid var(--border)',
-            }}
-          >
-            <div
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: 6,
-                fontFamily: 'var(--font-mono)',
-                fontSize: 11,
-                color: 'var(--text-mute)',
-              }}
-            >
-              <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
-                <circle cx="3" cy="3" r="1.5" stroke="currentColor" strokeWidth="1" />
-                <circle cx="9" cy="9" r="1.5" stroke="currentColor" strokeWidth="1" />
-                <circle cx="9" cy="3" r="1.5" stroke="currentColor" strokeWidth="1" />
-                <path d="M3 4.5V6a3 3 0 003 3h3" stroke="currentColor" strokeWidth="1" />
-                <path d="M9 4.5V7.5" stroke="currentColor" strokeWidth="1" />
-              </svg>
-              <span style={{ color: 'var(--text-dim)' }}>main</span>
-              <span style={{ color: 'var(--text-mute)' }}>→</span>
-              <span style={{ color: 'var(--accent)' }}>feat/new-task</span>
-            </div>
-            <span style={{ fontFamily: 'var(--font-sans)', fontSize: 11, color: 'var(--text-mute)' }}>
-              Sonnet 4.5 · Conservative
-            </span>
-          </div>
         </div>
 
         {/* Starters */}
@@ -835,9 +741,16 @@ export default function Onboarding({ onComplete }: Props) {
   const [projectPath, setProjectPath] = useState('');
 
   async function handleComplete(taskDescription: string) {
+    const path = projectPath || '/tmp';
+    const baseName = (() => {
+      const trimmed = path.replace(/\/+$/, '');
+      const idx = trimmed.lastIndexOf('/');
+      return idx === -1 ? trimmed : trimmed.slice(idx + 1);
+    })();
     const profile = {
       accountId: 'user@example.com',
-      projectPath: projectPath || '/tmp',
+      projectPath: path,
+      projects: [{ id: `p-${Date.now()}`, name: baseName, path, count: 0 }],
       defaultModel: 'claude-sonnet-4-6',
       apiKey,
       taskDescription,

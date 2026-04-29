@@ -2,10 +2,27 @@ node_modules/
 dist/
 .DS_Store
 
+# Tauri build artifacts
+src-tauri/target/
+src-tauri/gen/
+
 # Playwright artifacts
 .playwright-mcp/
 step*.png
 
-# Tauri build artifacts
-src-tauri/target/
-src-tauri/gen/
+# Internal tooling / planning (not part of the open-source project)
+.claude/
+.superpowers/
+.worktrees/
+.claude/worktrees/
+
+# Vite cache
+.vite/
+
+# Design handoff / internal memos
+Claude\ Workbench.html
+HANDOFF.md
+SPEC.md
+
+# acceptance test screenshots
+acceptance/
