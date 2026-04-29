@@ -1,9 +1,19 @@
 import { useEffect, useRef, useState } from 'react';
 import { Check } from 'lucide-react';
 import { invoke } from '@tauri-apps/api/core';
+import {
+  type AppearanceState,
+  type Theme,
+  type Density,
+  loadAppearance,
+  applyAppearanceToDom,
+  saveAppearanceLocal,
+} from '../lib/appearance';
 
 interface Props {
   onClose: () => void;
+  yoloMode: boolean;
+  onYoloModeChange: (v: boolean) => void;
 }
 
 type NavItem =
@@ -18,6 +28,7 @@ type NavItem =
 
 const NAV_ITEMS: NavItem[] = [
   'Account',
+  'Permissions',
   'Appearance',
 ];
 
@@ -28,34 +39,6 @@ const ACCENT_COLORS = [
   { value: '#6b4c35', label: 'Warm brown' },
   { value: '#4a5568', label: 'Slate' },
 ];
-
-type Theme = 'light' | 'dark' | 'system';
-type Density = 'compact' | 'comfortable' | 'spacious';
-
-interface AppearanceState {
-  theme: Theme;
-  density: Density;
-  accent: string;
-}
-
-function loadAppearance(): AppearanceState {
-  try {
-    const raw = localStorage.getItem('workbench-appearance');
-    if (raw) return JSON.parse(raw);
-  } catch {
-    // ignore
-  }
-  return { theme: 'light', density: 'comfortable', accent: '#2d6b5d' };
-}
-
-async function saveAppearance(state: AppearanceState) {
-  try {
-    await invoke('save_appearance', { data: JSON.stringify(state) });
-  } catch {
-    // Fallback: if Tauri command fails, ignore silently
-  }
-  localStorage.setItem('workbench-appearance', JSON.stringify(state));
-}
 
 // ─── Sub-panes ─────────────────────────────────────────────────────────────
 
@@ -252,7 +235,7 @@ function AccountPane() {
             marginTop: 6,
           }}
         >
-          Stored in OS keychain
+          Stored in ~/.workbench/profile.json
         </p>
       </section>
 
@@ -300,12 +283,14 @@ function AccountPane() {
 function AppearancePane() {
   const [state, setState] = useState<AppearanceState>(loadAppearance);
 
+  useEffect(() => {
+    applyAppearanceToDom(state);
+    saveAppearanceLocal(state);
+    invoke('save_appearance', { data: JSON.stringify(state) }).catch(() => {});
+  }, [state]);
+
   function update(patch: Partial<AppearanceState>) {
     setState((prev) => ({ ...prev, ...patch }));
-  }
-
-  async function handleSave() {
-    await saveAppearance(state);
   }
 
   const THEME_CARDS: { value: Theme; label: string; swatch: React.ReactNode }[] = [
@@ -538,25 +523,6 @@ function AppearancePane() {
         </div>
       </section>
 
-      {/* Save */}
-      <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
-        <button
-          onClick={handleSave}
-          style={{
-            fontFamily: 'var(--font-sans)',
-            fontSize: 13,
-            fontWeight: 500,
-            color: '#fff',
-            background: 'var(--green)',
-            border: 'none',
-            borderRadius: 8,
-            padding: '8px 20px',
-            cursor: 'pointer',
-          }}
-        >
-          Save preferences
-        </button>
-      </div>
     </div>
   );
 }
@@ -592,9 +558,60 @@ function ComingSoonPane({ title }: { title: string }) {
   );
 }
 
+// ─── Permissions pane ─────────────────────────────────────────────────────
+
+function PermissionsPane({ yoloMode, onYoloModeChange }: { yoloMode: boolean; onYoloModeChange: (v: boolean) => void }) {
+  return (
+    <div>
+      <h1 style={{ fontFamily: 'var(--font-serif)', fontSize: 22, fontWeight: 400, color: 'var(--text)', marginBottom: 6 }}>
+        Permissions
+      </h1>
+      <p style={{ fontFamily: 'var(--font-sans)', fontSize: 13, color: 'var(--text-dim)', marginBottom: 24, lineHeight: 1.5 }}>
+        Control what Claude is allowed to do. When YOLO mode is off, shell execution (Bash) is blocked — Claude can read and edit files but cannot run arbitrary commands.
+      </p>
+
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '14px 16px', background: 'var(--surface-1)', borderRadius: 8, border: '1px solid var(--border)' }}>
+        <div>
+          <div style={{ fontFamily: 'var(--font-sans)', fontSize: 14, fontWeight: 500, color: 'var(--text)', marginBottom: 2 }}>
+            YOLO mode
+          </div>
+          <div style={{ fontFamily: 'var(--font-sans)', fontSize: 12, color: 'var(--text-dim)' }}>
+            Allow Claude to run shell commands ({yoloMode ? 'currently on — Bash is allowed' : 'currently off — Bash is blocked'})
+          </div>
+        </div>
+        <button
+          onClick={() => onYoloModeChange(!yoloMode)}
+          style={{
+            width: 40,
+            height: 22,
+            borderRadius: 11,
+            border: 'none',
+            background: yoloMode ? 'var(--accent)' : 'var(--border)',
+            cursor: 'pointer',
+            position: 'relative',
+            flexShrink: 0,
+            transition: 'background 0.15s',
+          }}
+        >
+          <span style={{
+            position: 'absolute',
+            top: 3,
+            left: yoloMode ? 21 : 3,
+            width: 16,
+            height: 16,
+            borderRadius: '50%',
+            background: '#fff',
+            transition: 'left 0.15s',
+          }} />
+        </button>
+      </div>
+    </div>
+  );
+}
+
 // ─── Main Settings overlay ─────────────────────────────────────────────────
 
-export default function Settings({ onClose }: Props) {
+export default function Settings({ onClose, yoloMode, onYoloModeChange }: Props) {
   const [active, setActive] = useState<NavItem>('Account');
   const overlayRef = useRef<HTMLDivElement>(null);
 
@@ -611,6 +628,8 @@ export default function Settings({ onClose }: Props) {
     switch (active) {
       case 'Account':
         return <AccountPane />;
+      case 'Permissions':
+        return <PermissionsPane yoloMode={yoloMode} onYoloModeChange={onYoloModeChange} />;
       case 'Appearance':
         return <AppearancePane />;
       default:
