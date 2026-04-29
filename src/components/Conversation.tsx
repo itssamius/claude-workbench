@@ -1162,7 +1162,7 @@ export default function Conversation({
       >
         <div
           style={{
-            maxWidth: 720,
+            maxWidth: 820,
             margin: '0 auto',
             padding: '24px 40px 0',
           }}
@@ -1270,7 +1270,7 @@ export default function Conversation({
           flexShrink: 0,
           padding: '0 40px',
           paddingBottom: 16,
-          maxWidth: 720,
+          maxWidth: 820,
           margin: '0 auto',
           width: '100%',
           boxSizing: 'border-box',

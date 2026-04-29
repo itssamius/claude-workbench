@@ -38,15 +38,20 @@ enum AgentEvent {
 
 // ── Task registry (for stop_task) ─────────────────────────────────────────────
 
-type TaskRegistry = Arc<tokio::sync::Mutex<HashMap<String, oneshot::Sender<()>>>>;
+type TaskRegistry    = Arc<tokio::sync::Mutex<HashMap<String, oneshot::Sender<()>>>>;
+type PermRegistry    = Arc<tokio::sync::Mutex<HashMap<String, oneshot::Sender<bool>>>>;
 
 struct AppState {
-    tasks: TaskRegistry,
+    tasks:       TaskRegistry,
+    permissions: PermRegistry,
 }
 
 impl Default for AppState {
     fn default() -> Self {
-        AppState { tasks: Arc::new(tokio::sync::Mutex::new(HashMap::new())) }
+        AppState {
+            tasks:       Arc::new(tokio::sync::Mutex::new(HashMap::new())),
+            permissions: Arc::new(tokio::sync::Mutex::new(HashMap::new())),
+        }
     }
 }
 
@@ -163,6 +168,7 @@ async fn run_agent(
     prompt: String,
     resume_session: Option<String>,
     model: Option<String>,
+    yolo_mode: bool,
     mut cancel_rx: oneshot::Receiver<()>,
 ) {
     // Use the user's login shell so nvm/homebrew/npm PATH shims are loaded.
@@ -170,14 +176,20 @@ async fn run_agent(
     // any shell injection. `--resume` only appears when $_WBRESUME is set.
     let shell = std::env::var("SHELL").unwrap_or_else(|_| "/bin/zsh".to_string());
 
-    // Build argv as positional params so each token is a distinct argv entry —
-    // avoids shell collapsing `--resume "$id"` into one word inside `${var:+…}`.
+    // yolo_mode=false: keep --dangerously-skip-permissions so --print mode
+    // never hangs, but block Bash so shell commands cannot run.
+    // yolo_mode=true: no restrictions (existing behaviour).
+    // --disallowedTools is variadic and greedily consumes positional args that
+    // follow it, including the prompt. Build flags first, then append `-- prompt`
+    // so the `--` end-of-options marker prevents the prompt from being parsed
+    // as a tool name.
     let cmd = "set -- --print --verbose --output-format stream-json \
                --include-partial-messages \
                --dangerously-skip-permissions; \
                if [ -n \"$_WBRESUME\" ]; then set -- \"$@\" --resume \"$_WBRESUME\"; fi; \
                if [ -n \"$_WBMODEL\" ];  then set -- \"$@\" --model \"$_WBMODEL\"; fi; \
-               set -- \"$@\" \"$_WBPROMPT\"; \
+               if [ -n \"$_WBDISALLOWED\" ]; then set -- \"$@\" --disallowedTools \"$_WBDISALLOWED\"; fi; \
+               set -- \"$@\" -- \"$_WBPROMPT\"; \
                exec claude \"$@\"";
 
     let mut command = Command::new(&shell);
@@ -193,6 +205,9 @@ async fn run_agent(
     }
     if let Some(m) = model.as_deref() {
         if !m.is_empty() { command.env("_WBMODEL", m); }
+    }
+    if !yolo_mode {
+        command.env("_WBDISALLOWED", "Bash");
     }
 
     let mut child = match command.spawn()
@@ -371,8 +386,12 @@ async fn run_agent(
                     }
                 }
                 if ev["subtype"].as_str() == Some("error") || ev["is_error"].as_bool() == Some(true) {
+                    // Error message may be in result (string), error.message (object),
+                    // or errors[0] (array) depending on Claude CLI version and error type.
                     let msg = ev["result"].as_str()
                         .or_else(|| ev["error"]["message"].as_str())
+                        .or_else(|| ev["error"].as_str())
+                        .or_else(|| ev["errors"][0].as_str())
                         .unwrap_or("Claude Code reported an error");
                     emit_agent(&app, &task_id, AgentEvent::Error { message: msg.to_string() });
                     let _ = child.kill().await;
@@ -441,13 +460,15 @@ async fn start_task(
     prompt: String,
     resume_session: Option<String>,
     model: Option<String>,
+    yolo_mode: Option<bool>,
 ) -> Result<(), String> {
+    let yolo = yolo_mode.unwrap_or(false);
     let (cancel_tx, cancel_rx) = oneshot::channel::<()>();
     state.tasks.lock().await.insert(task_id.clone(), cancel_tx);
     let tasks = state.tasks.clone();
     let tid = task_id.clone();
     tokio::spawn(async move {
-        run_agent(app, task_id, project_path, prompt, resume_session, model, cancel_rx).await;
+        run_agent(app, task_id, project_path, prompt, resume_session, model, yolo, cancel_rx).await;
         // Remove from registry once done (natural completion or cancel)
         tasks.lock().await.remove(&tid);
     });
@@ -459,6 +480,50 @@ async fn stop_task(state: State<'_, AppState>, task_id: String) -> Result<(), St
     if let Some(tx) = state.tasks.lock().await.remove(&task_id) {
         let _ = tx.send(());
     }
+    Ok(())
+}
+
+#[tauri::command]
+async fn resolve_permission(
+    state: State<'_, AppState>,
+    id: String,
+    allow: bool,
+    _always: bool,
+) -> Result<(), String> {
+    if let Some(tx) = state.permissions.lock().await.remove(&id) {
+        let _ = tx.send(allow);
+    }
+    Ok(())
+}
+
+#[tauri::command]
+async fn save_policy(
+    project_path: String,
+    tool: String,
+    pattern: String,
+) -> Result<(), String> {
+    let home = std::env::var("HOME").map_err(|_| "HOME not set".to_string())?;
+    let policies_dir = Path::new(&home).join(".workbench").join("policies");
+    std::fs::create_dir_all(&policies_dir).map_err(|e| e.to_string())?;
+
+    // Derive a stable filename from the project path
+    let slug = project_path
+        .trim_start_matches('/')
+        .replace('/', "_")
+        .replace(' ', "-");
+    let policy_file = policies_dir.join(format!("{}.toml", slug));
+
+    // Append the new rule
+    let entry = format!(
+        "\n[[rules]]\ntool = {:?}\npattern = {:?}\naction = \"allow\"\n",
+        tool, pattern
+    );
+    let mut f = std::fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(&policy_file)
+        .map_err(|e| e.to_string())?;
+    std::io::Write::write_all(&mut f, entry.as_bytes()).map_err(|e| e.to_string())?;
     Ok(())
 }
 
@@ -908,6 +973,28 @@ async fn uninstall_plugin(name: String, marketplace: String) -> Result<String, S
 
 // ── File / path utilities ─────────────────────────────────────────────────────
 
+/// Allow a resolved path only if it lives under `base_path` or `~/.workbench`.
+fn check_path_allowed(resolved: &Path, base_path: Option<&str>) -> Result<(), String> {
+    let home = std::env::var("HOME").unwrap_or_default();
+    let workbench = Path::new(&home).join(".workbench");
+    let canonical = resolved.canonicalize()
+        .or_else(|_| resolved.parent()
+            .map(|p| p.canonicalize().unwrap_or_else(|_| p.to_path_buf()))
+            .ok_or_else(|| std::io::Error::new(std::io::ErrorKind::NotFound, "no parent")))
+        .unwrap_or_else(|_| resolved.to_path_buf());
+    if canonical.starts_with(&workbench) {
+        return Ok(());
+    }
+    if let Some(base) = base_path {
+        let base_canon = Path::new(base).canonicalize()
+            .unwrap_or_else(|_| Path::new(base).to_path_buf());
+        if canonical.starts_with(&base_canon) {
+            return Ok(());
+        }
+    }
+    Err(format!("path not permitted: {}", resolved.display()))
+}
+
 /// Open `path` in the OS-default handler. Used to make tool-call file paths
 /// clickable (e.g. opens the file in the user's default editor).
 /// Resolves relative paths against `base_path` if provided.
@@ -915,11 +1002,12 @@ async fn uninstall_plugin(name: String, marketplace: String) -> Result<String, S
 async fn open_path(path: String, base_path: Option<String>) -> Result<(), String> {
     let resolved = if Path::new(&path).is_absolute() {
         std::path::PathBuf::from(&path)
-    } else if let Some(base) = base_path {
-        Path::new(&base).join(&path)
+    } else if let Some(ref base) = base_path {
+        Path::new(base).join(&path)
     } else {
         std::path::PathBuf::from(&path)
     };
+    check_path_allowed(&resolved, base_path.as_deref())?;
 
     let p = resolved.to_string_lossy().to_string();
     let result = if cfg!(target_os = "macos") {
@@ -954,11 +1042,12 @@ async fn read_file(path: String, base_path: Option<String>) -> Result<FilePrevie
 
     let resolved: std::path::PathBuf = if Path::new(&path).is_absolute() {
         std::path::PathBuf::from(&path)
-    } else if let Some(base) = base_path {
-        Path::new(&base).join(&path)
+    } else if let Some(ref base) = base_path {
+        Path::new(base).join(&path)
     } else {
         std::path::PathBuf::from(&path)
     };
+    check_path_allowed(&resolved, base_path.as_deref())?;
 
     let meta = std::fs::metadata(&resolved).map_err(|e| format!("stat {}: {e}", resolved.display()))?;
     let size = meta.len();
@@ -1100,13 +1189,14 @@ async fn summarize_session(first_user: String, last_assistant: String) -> Result
         &first_user.chars().take(4000).collect::<String>(),
         &last_assistant.chars().take(4000).collect::<String>(),
     );
-    let escaped = shell_escape(&prompt);
-    let cmd = format!("claude --print --model haiku --dangerously-skip-permissions {escaped}");
+    // Pass prompt via env var — no shell interpolation of user content.
+    let cmd = "claude --print --model haiku --dangerously-skip-permissions \"$_WBSUMPROMPT\"";
     let output = tokio::time::timeout(
         std::time::Duration::from_secs(15),
         tokio::task::spawn_blocking(move || {
             std::process::Command::new(&shell)
-                .args(["-l", "-c", &cmd])
+                .args(["-l", "-c", cmd])
+                .env("_WBSUMPROMPT", &prompt)
                 .output()
         }),
     ).await
@@ -1138,7 +1228,8 @@ struct DirEntry {
 }
 
 #[tauri::command]
-async fn list_dir(path: String) -> Result<Vec<DirEntry>, String> {
+async fn list_dir(path: String, base_path: Option<String>) -> Result<Vec<DirEntry>, String> {
+    check_path_allowed(Path::new(&path), base_path.as_deref())?;
     const SKIP: &[&str] = &[".git","node_modules","target","dist","build",".next",".nuxt",".cache",".turbo",".vite","__pycache__",".venv","venv",".worktrees"];
     let mut entries = Vec::new();
     let rd = std::fs::read_dir(&path).map_err(|e| e.to_string())?;
@@ -1167,22 +1258,28 @@ async fn list_dir(path: String) -> Result<Vec<DirEntry>, String> {
 async fn write_file(path: String, content: String, base_path: Option<String>) -> Result<(), String> {
     let resolved: std::path::PathBuf = if std::path::Path::new(&path).is_absolute() {
         std::path::PathBuf::from(&path)
-    } else if let Some(base) = base_path {
-        std::path::Path::new(&base).join(&path)
+    } else if let Some(ref base) = base_path {
+        std::path::Path::new(base).join(&path)
     } else {
         std::path::PathBuf::from(&path)
     };
-    let home = std::env::var("HOME").unwrap_or_default();
-    let canonical = resolved.canonicalize()
-        .or_else(|_| resolved.parent().map(|p| p.to_path_buf()).ok_or(std::io::Error::new(std::io::ErrorKind::NotFound, "no parent")))
-        .map_err(|e| e.to_string())?;
-    if !canonical.starts_with(&home) {
-        return Err(format!("write_file: path outside home: {}", resolved.display()));
-    }
+    check_path_allowed(&resolved, base_path.as_deref())?;
     let tmp = resolved.with_extension("tmp.wb");
     std::fs::write(&tmp, content.as_bytes()).map_err(|e| e.to_string())?;
     std::fs::rename(&tmp, &resolved).map_err(|e| e.to_string())?;
     Ok(())
+}
+
+fn parse_porcelain(text: &str) -> Vec<(String, String)> {
+    text.lines()
+        .filter_map(|l| {
+            if l.len() < 3 { return None; }
+            let status = l[0..2].trim().to_string();
+            let file = l[3..].trim().to_string();
+            if file.is_empty() { return None; }
+            Some((file, status))
+        })
+        .collect()
 }
 
 #[tauri::command]
@@ -1193,16 +1290,7 @@ async fn git_status_porcelain(project_path: String) -> Result<Vec<(String, Strin
         .output()
         .map_err(|e| e.to_string())?;
     let text = String::from_utf8_lossy(&output.stdout);
-    let result = text.lines()
-        .filter_map(|l| {
-            if l.len() < 3 { return None; }
-            let status = l[0..2].trim().to_string();
-            let file = l[3..].trim().to_string();
-            if file.is_empty() { return None; }
-            Some((file, status))
-        })
-        .collect();
-    Ok(result)
+    Ok(parse_porcelain(&text))
 }
 
 /// Wrap a value so it survives a single round-trip through `sh -c`.
@@ -1230,6 +1318,8 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             start_task,
             stop_task,
+            resolve_permission,
+            save_policy,
             save_profile,
             save_appearance,
             load_profile,
@@ -1273,4 +1363,184 @@ pub fn run() {
                 term::shutdown_all_state(&state);
             }
         });
+}
+
+// ── Unit tests ────────────────────────────────────────────────────────────────
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+
+    // ── shell_escape ──────────────────────────────────────────────────────────
+
+    #[test]
+    fn shell_escape_simple() {
+        assert_eq!(shell_escape("hello"), "'hello'");
+    }
+
+    #[test]
+    fn shell_escape_empty() {
+        assert_eq!(shell_escape(""), "''");
+    }
+
+    #[test]
+    fn shell_escape_single_quote() {
+        assert_eq!(shell_escape("it's"), "'it'\\''s'");
+    }
+
+    #[test]
+    fn shell_escape_spaces_and_special_chars() {
+        assert_eq!(shell_escape("foo bar; rm -rf /"), "'foo bar; rm -rf /'");
+    }
+
+    #[test]
+    fn shell_escape_multiple_quotes() {
+        assert_eq!(shell_escape("a'b'c"), "'a'\\''b'\\''c'");
+    }
+
+    // ── extract_plan ─────────────────────────────────────────────────────────
+
+    #[test]
+    fn extract_plan_dot_format() {
+        let text = "1. Do the thing\n2. Then this\n3. Finally that";
+        let items = extract_plan(text);
+        assert_eq!(items.len(), 3);
+        assert_eq!(items[0].label, "Do the thing");
+        assert_eq!(items[1].label, "Then this");
+        assert_eq!(items[0].status, "active");
+        assert_eq!(items[1].status, "pending");
+    }
+
+    #[test]
+    fn extract_plan_paren_format() {
+        let text = "1) Step one\n2) Step two";
+        let items = extract_plan(text);
+        assert_eq!(items.len(), 2);
+        assert_eq!(items[0].label, "Step one");
+    }
+
+    #[test]
+    fn extract_plan_empty_text() {
+        assert!(extract_plan("").is_empty());
+    }
+
+    #[test]
+    fn extract_plan_no_numbered_list() {
+        let text = "Just prose\nwith no numbers";
+        assert!(extract_plan(text).is_empty());
+    }
+
+    #[test]
+    fn extract_plan_ids_are_sequential() {
+        let text = "1. First\n2. Second\n3. Third";
+        let items = extract_plan(text);
+        assert_eq!(items[0].id, "1");
+        assert_eq!(items[2].id, "3");
+    }
+
+    // ── cc_tool_display ───────────────────────────────────────────────────────
+
+    #[test]
+    fn cc_tool_display_known_tools() {
+        assert_eq!(cc_tool_display("Read"),      "READ");
+        assert_eq!(cc_tool_display("Bash"),      "SHELL");
+        assert_eq!(cc_tool_display("WebSearch"), "SEARCH");
+    }
+
+    #[test]
+    fn cc_tool_display_unknown_falls_back() {
+        assert_eq!(cc_tool_display("SomeFutureTool"), "TOOL");
+    }
+
+    // ── cc_tool_path / cc_tool_detail ─────────────────────────────────────────
+
+    #[test]
+    fn cc_tool_path_file_tools() {
+        let input = json!({ "file_path": "/src/main.rs" });
+        assert_eq!(cc_tool_path("Read",  &input), "/src/main.rs");
+        assert_eq!(cc_tool_path("Write", &input), "/src/main.rs");
+        assert_eq!(cc_tool_path("Edit",  &input), "/src/main.rs");
+    }
+
+    #[test]
+    fn cc_tool_path_bash_is_empty() {
+        let input = json!({ "command": "ls -la" });
+        assert_eq!(cc_tool_path("Bash", &input), "");
+    }
+
+    #[test]
+    fn cc_tool_detail_bash_is_command() {
+        let input = json!({ "command": "cargo test" });
+        assert_eq!(cc_tool_detail("Bash", &input), "cargo test");
+    }
+
+    #[test]
+    fn cc_tool_detail_grep_is_pattern() {
+        let input = json!({ "pattern": "fn main" });
+        assert_eq!(cc_tool_detail("Grep", &input), "fn main");
+    }
+
+    #[test]
+    fn cc_tool_detail_write_reports_byte_count() {
+        let input = json!({ "content": "hello" });
+        assert_eq!(cc_tool_detail("Write", &input), "5 bytes");
+    }
+
+    // ── parse_porcelain ───────────────────────────────────────────────────────
+
+    #[test]
+    fn parse_porcelain_modified_and_untracked() {
+        let text = " M src/main.rs\n?? new_file.txt\n";
+        let result = parse_porcelain(text);
+        assert_eq!(result.len(), 2);
+        assert_eq!(result[0], ("src/main.rs".into(), "M".into()));
+        assert_eq!(result[1], ("new_file.txt".into(), "??".into()));
+    }
+
+    #[test]
+    fn parse_porcelain_empty_output() {
+        assert!(parse_porcelain("").is_empty());
+    }
+
+    #[test]
+    fn parse_porcelain_staged_and_unstaged() {
+        let text = "MM src/lib.rs\nA  new.rs\n";
+        let result = parse_porcelain(text);
+        assert_eq!(result[0].1, "MM");
+        assert_eq!(result[1].1, "A");
+    }
+
+    #[test]
+    fn parse_porcelain_skips_short_lines() {
+        let text = "M\n M src/lib.rs\n";
+        let result = parse_porcelain(text);
+        assert_eq!(result.len(), 1);
+        assert_eq!(result[0].0, "src/lib.rs");
+    }
+
+    // ── check_path_allowed ────────────────────────────────────────────────────
+
+    #[test]
+    fn check_path_allowed_under_base_path() {
+        let tmp = std::env::temp_dir();
+        let sub = tmp.join("allowed_file.txt");
+        let tmp_str = tmp.to_str().unwrap();
+        assert!(check_path_allowed(&sub, Some(tmp_str)).is_ok());
+    }
+
+    #[test]
+    fn check_path_allowed_outside_base_path_is_err() {
+        let tmp = std::env::temp_dir();
+        let other = std::path::Path::new("/etc/hosts");
+        let tmp_str = tmp.to_str().unwrap();
+        assert!(check_path_allowed(other, Some(tmp_str)).is_err());
+    }
+
+    #[test]
+    fn check_path_allowed_no_base_allows_workbench() {
+        let home = std::env::var("HOME").unwrap_or_default();
+        let wb_path = std::path::Path::new(&home).join(".workbench").join("profile.json");
+        assert!(check_path_allowed(&wb_path, None).is_ok());
+    }
 }

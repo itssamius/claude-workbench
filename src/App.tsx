@@ -20,6 +20,9 @@ import { PluginsPage } from './components/PluginsPage';
 import type { Automation, Message, PlanItem, Project, ToolCall } from './data/sample';
 import type { AgentEvent } from './types/agent-events';
 import type { PermissionRequest } from './types/permissions';
+import { basename, tildeify, relativeTime, diffStats, deriveHeuristicTitle } from './lib/utils';
+import { AVATAR_COLORS, restoreSession } from './lib/session';
+import { loadAppearance, applyAppearanceToDom } from './lib/appearance';
 
 interface TerminalTabState {
   localKey: string;
@@ -75,16 +78,6 @@ interface SessionState {
   tokenUsage?: { input: number; output: number; cacheRead: number; cacheCreation: number };
 }
 
-function basename(path: string): string {
-  const trimmed = path.replace(/\/+$/, '');
-  const idx = trimmed.lastIndexOf('/');
-  return idx === -1 ? trimmed : trimmed.slice(idx + 1);
-}
-
-function tildeify(path: string): string {
-  // /Users/<name>/foo → ~/foo on macOS; /home/<name>/foo → ~/foo on linux
-  return path.replace(/^\/(Users|home)\/[^/]+/, '~');
-}
 
 function EmptyChatState({
   hasProjects,
@@ -155,31 +148,6 @@ function EmptyChatState({
   );
 }
 
-function relativeTime(createdAt: number): string {
-  const elapsed = Date.now() - createdAt;
-  const minutes = Math.floor(elapsed / 60_000);
-  if (minutes < 1) return 'now';
-  if (minutes < 60) return `${minutes}m`;
-  const hours = Math.floor(minutes / 60);
-  if (hours < 24) return `${hours}h`;
-  return `${Math.floor(hours / 24)}d`;
-}
-
-function deriveHeuristicTitle(prompt: string): string {
-  const stripped = prompt.trim().replace(/^(can you|could you|please|hey|hi)[,\s]+/i, '').trim();
-  const sentence = (stripped.split(/[.!?\n]/)[0] ?? stripped).trim();
-  const capped = sentence.length > 48 ? sentence.slice(0, 48) : sentence;
-  return capped.replace(/\b\w/g, c => c.toUpperCase());
-}
-
-function diffStats(patch: string): { additions: number; deletions: number } {
-  let additions = 0, deletions = 0;
-  for (const line of patch.split('\n')) {
-    if (line.startsWith('+') && !line.startsWith('+++')) additions++;
-    else if (line.startsWith('-') && !line.startsWith('---')) deletions++;
-  }
-  return { additions, deletions };
-}
 
 export type View =
   | { kind: 'chat' }
@@ -193,6 +161,19 @@ export default function App() {
   // Onboarding gate: null = loading, false = needs onboarding, true = done
   const [onboardingDone, setOnboardingDone] = useState<boolean | null>(null);
   const [showSettings, setShowSettings] = useState(false);
+  const [toast, setToast] = useState<string | null>(null);
+  const toastTimerRef = useRef<number | null>(null);
+
+  function showError(message: string) {
+    setToast(message);
+    if (toastTimerRef.current != null) clearTimeout(toastTimerRef.current);
+    toastTimerRef.current = window.setTimeout(() => setToast(null), 4000);
+  }
+
+  // Apply stored appearance to DOM before first paint
+  useEffect(() => {
+    applyAppearanceToDom(loadAppearance());
+  }, []);
 
   // Per-session listener unsubscribe functions. Keyed by session id so
   // concurrent sessions each manage their own listener independently.
@@ -209,6 +190,7 @@ export default function App() {
   // Profile data (loaded from ~/.workbench/profile.json)
   const [projectPath, setProjectPath] = useState('/tmp');
   const [apiKey, setApiKey] = useState('');
+  const [yoloMode, setYoloMode] = useState(false);
 
   // Project list — persisted in profile.json under `projects`
   const [projects, setProjects] = useState<Project[]>([]);
@@ -217,7 +199,6 @@ export default function App() {
   const [automations, setAutomations] = useState<Automation[]>(AUTOMATIONS);
   const automationsLoadedRef = useRef(false);
 
-  const AVATAR_COLORS = ['#c4bfb5', '#b8b0a4', '#bdb6ae', '#c8c2b8', '#b4aca3', '#ccc6bc'];
   const DEFAULT_MODEL = 'sonnet';
 
   const [sessions, setSessions] = useState<SessionState[]>([]);
@@ -262,6 +243,7 @@ export default function App() {
             const profile = JSON.parse(raw);
             if (profile.projectPath) setProjectPath(profile.projectPath);
             if (profile.apiKey) setApiKey(profile.apiKey);
+            if (typeof profile.yoloMode === 'boolean') setYoloMode(profile.yoloMode);
             if (Array.isArray(profile.projects) && profile.projects.length > 0) {
               setProjects(profile.projects);
             } else if (profile.projectPath) {
@@ -400,41 +382,7 @@ export default function App() {
       try {
         const parsed = JSON.parse(raw);
         if (!Array.isArray(parsed.sessions) || parsed.sessions.length === 0) return;
-        const restored: SessionState[] = parsed.sessions.map((s: any, i: number) => ({
-          id: s.id ?? `s-${Date.now()}-${i}`,
-          initials: s.initials ?? 'NW',
-          avatarBg: s.avatarBg ?? AVATAR_COLORS[i % AVATAR_COLORS.length],
-          taskState: 'idle',  // never restore as 'working'
-          title: s.title ?? 'New task',
-          project: s.project ?? '',
-          createdAt: s.createdAt ?? Date.now(),
-          lastActivityAt: s.lastActivityAt ?? s.createdAt ?? Date.now(),
-          model: typeof s.model === 'string' && s.model ? s.model : 'sonnet',
-          panelTabs: Array.isArray(s.panelTabs) ? s.panelTabs.filter((t: any) => typeof t === 'string') : [],
-          panelActive: typeof s.panelActive === 'string' ? s.panelActive : 'review',
-          panelCollapsed: typeof s.panelCollapsed === 'boolean' ? s.panelCollapsed : false,
-          messages: Array.isArray(s.messages) ? s.messages : [],
-          planItems: Array.isArray(s.planItems) ? s.planItems : [],
-          toolCalls: Array.isArray(s.toolCalls) ? s.toolCalls : [],
-          diffPatch: s.diffPatch ?? '',
-          isRunning: false,
-          worktreePath: s.worktreePath,
-          worktreeBranch: s.worktreeBranch,
-          claudeSessionId: typeof s.claudeSessionId === 'string' ? s.claudeSessionId : undefined,
-          terminals: Array.isArray(s.terminals)
-            ? s.terminals.map((t: any, j: number) => ({
-                localKey: `t-${s.id}-${j}-${Date.now()}`,
-                cwd: t.cwd,
-              }))
-            : [],
-          activeTerminalKey: null,
-          tokenUsage: s.tokenUsage ?? { input: 0, output: 0, cacheRead: 0, cacheCreation: 0 },
-          titleLocked: s.titleLocked ?? false,
-          summarizedAtTurn: s.summarizedAtTurn ?? 0,
-        }));
-        for (const s of restored) {
-          s.activeTerminalKey = s.terminals[0]?.localKey ?? null;
-        }
+        const restored = parsed.sessions.map(restoreSession) as SessionState[];
         setSessions(restored);
         if (parsed.activeSessionId && restored.some(s => s.id === parsed.activeSessionId)) {
           setActiveSessionId(parsed.activeSessionId);
@@ -652,9 +600,12 @@ export default function App() {
     if (!override && (isRunning || !currentSession)) return;
 
     const sessionId = override?.sessionId ?? activeSessionId;
-    const workDir   = override?.workDir
-                   ?? currentSession?.worktreePath
-                   ?? projectPath;
+
+    // Look up session (may not be flushed to React state yet for automation-spawned sessions)
+    const sess = sessions.find(s => s.id === sessionId);
+    const projPath = sess?.project
+      ? (projects.find(p => p.name === sess.project)?.path ?? projectPath)
+      : (override?.workDir ?? projectPath);
 
     setSessions(prev => prev.map(s => {
       if (s.id !== sessionId) return s;
@@ -673,6 +624,43 @@ export default function App() {
         }],
       };
     }));
+
+    // Ensure a dedicated worktree exists for this session before Claude starts
+    let workDir: string | undefined = sess?.worktreePath;
+    if (!workDir) {
+      try {
+        const wt = await invoke<{ path: string; branch: string }>('create_worktree', { projectPath: projPath });
+        workDir = wt.path;
+        setSessions(prev => prev.map(s => {
+          if (s.id !== sessionId) return s;
+          return {
+            ...s,
+            worktreePath: wt.path,
+            worktreeBranch: wt.branch,
+            terminals: s.terminals.length > 0
+              ? [{ ...s.terminals[0], cwd: wt.path }, ...s.terminals.slice(1)]
+              : s.terminals,
+          };
+        }));
+      } catch (err) {
+        setSessions(prev => prev.map(s => {
+          if (s.id !== sessionId) return s;
+          return {
+            ...s,
+            isRunning: false,
+            taskState: 'idle',
+            messages: [...s.messages, {
+              id: `msg-err-${Date.now()}`,
+              role: 'assistant' as const,
+              author: 'Claude',
+              time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+              content: `Could not create isolated worktree: ${String(err)}`,
+            }],
+          };
+        }));
+        return;
+      }
+    }
 
     const unlisten = await listen<AgentEvent>('agent-event', (event) => {
       const ev = event.payload;
@@ -836,6 +824,10 @@ export default function App() {
         }
         case 'error': {
           flushTokens();
+          // If Claude couldn't find the session to resume (stale claudeSessionId),
+          // clear it so the next attempt starts a fresh session instead of failing again.
+          const sessionLost = ev.message.includes('No conversation found') ||
+            ev.message.includes('session') && ev.message.includes('not found');
           setSessions(prev => prev.map(s => {
             if (s.id !== sessionId) return s;
             return {
@@ -844,6 +836,7 @@ export default function App() {
               taskState: 'idle',
               currentTool: null,
               streamingText: false,
+              claudeSessionId: sessionLost ? undefined : s.claudeSessionId,
               messages: [...s.messages, {
                 id: `msg-err-${Date.now()}`,
                 role: 'assistant' as const,
@@ -871,10 +864,11 @@ export default function App() {
       const model    = liveSession?.model ?? DEFAULT_MODEL;
       await invoke('start_task', {
         taskId: sessionId,
-        projectPath: workDir,
+        projectPath: workDir!,
         prompt,
         resumeSession: resumeId ?? null,
         model,
+        yoloMode,
       });
     } catch (err) {
       setSessions(prev => prev.map(s => {
@@ -946,8 +940,8 @@ export default function App() {
       toolCalls: [],
       diffPatch: '',
       isRunning: false,
-      worktreePath: target.path,
-      worktreeBranch: branch || undefined,
+      worktreePath: undefined,
+      worktreeBranch: undefined,
       terminals: [{ localKey: `t-${Date.now()}`, cwd: target.path }],
       activeTerminalKey: null,  // panel will set on first render
     };
@@ -964,6 +958,7 @@ export default function App() {
       dir = await invoke<string | null>('choose_directory');
     } catch (err) {
       console.error('choose_directory failed:', err);
+      showError('Could not open the directory picker. Please try again.');
       return;
     }
     if (!dir) return;
@@ -1119,8 +1114,8 @@ export default function App() {
       toolCalls: [],
       diffPatch: '',
       isRunning: false,
-      worktreePath: target.path,
-      worktreeBranch: branch || undefined,
+      worktreePath: undefined,
+      worktreeBranch: undefined,
       terminals: [{ localKey: `t-${Date.now()}`, cwd: target.path }],
       activeTerminalKey: null,
     };
@@ -1146,11 +1141,18 @@ export default function App() {
   }
 
   async function doCommit(message: string) {
-    const workDir = currentSession?.worktreePath ?? projectPath;
+    const worktreePath = currentSession?.worktreePath;
+    if (!worktreePath) {
+      setShowCommitModal(false);
+      return;
+    }
     try {
-      await invoke('git_commit', { projectPath: workDir, message });
+      await invoke('git_commit', { projectPath: worktreePath, message });
     } catch (err) {
       console.error('git commit failed:', err);
+      showError('Commit failed. Check the terminal for details.');
+      setShowCommitModal(false);
+      return;
     }
     updateSession(activeSessionId, { diffPatch: '' });
     setShowCommitModal(false);
@@ -1161,13 +1163,21 @@ export default function App() {
   }
 
   async function doReject() {
-    const workDir = currentSession?.worktreePath ?? projectPath;
-    try {
-      await invoke('git_discard', { projectPath: workDir });
-    } catch (err) {
-      console.error('git discard failed:', err);
+    const worktreePath = currentSession?.worktreePath;
+    if (worktreePath) {
+      const proj = currentSession?.project
+        ? (projects.find(p => p.name === currentSession.project)?.path ?? projectPath)
+        : projectPath;
+      try {
+        await invoke('remove_worktree', { projectPath: proj, worktreePath });
+      } catch (err) {
+        console.error('remove_worktree failed:', err);
+        showError('Could not remove the worktree. You may need to clean it up manually.');
+      }
+      updateSession(activeSessionId, { diffPatch: '', worktreePath: undefined, worktreeBranch: undefined });
+    } else {
+      updateSession(activeSessionId, { diffPatch: '' });
     }
-    updateSession(activeSessionId, { diffPatch: '' });
     setShowRejectConfirm(false);
   }
 
@@ -1448,7 +1458,16 @@ export default function App() {
         />
       )}
 
-      {showSettings && <SettingsOverlay onClose={() => setShowSettings(false)} />}
+      {showSettings && (
+        <SettingsOverlay
+          onClose={() => setShowSettings(false)}
+          yoloMode={yoloMode}
+          onYoloModeChange={(v) => {
+            setYoloMode(v);
+            persistProfile({ yoloMode: v });
+          }}
+        />
+      )}
 
       {showCommitModal && (
         <CommitModal
@@ -1466,6 +1485,32 @@ export default function App() {
           onConfirm={doReject}
           onCancel={() => setShowRejectConfirm(false)}
         />
+      )}
+
+      {toast && (
+        <div
+          style={{
+            position: 'fixed',
+            bottom: 40,
+            left: '50%',
+            transform: 'translateX(-50%)',
+            zIndex: 9999,
+            background: 'var(--red)',
+            color: '#fff',
+            padding: '10px 18px',
+            borderRadius: 8,
+            fontFamily: 'var(--font-sans)',
+            fontSize: 13,
+            fontWeight: 500,
+            boxShadow: '0 4px 16px rgba(0,0,0,0.22)',
+            maxWidth: 440,
+            textAlign: 'center',
+            cursor: 'pointer',
+          }}
+          onClick={() => setToast(null)}
+        >
+          {toast}
+        </div>
       )}
     </div>
   );
