@@ -1462,7 +1462,7 @@ export default function App() {
         <SettingsOverlay
           onClose={() => setShowSettings(false)}
           yoloMode={yoloMode}
-          onYoloModeChange={(v) => {
+          onYoloModeChange={(v: boolean) => {
             setYoloMode(v);
             persistProfile({ yoloMode: v });
           }}
